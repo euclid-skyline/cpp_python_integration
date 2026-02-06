@@ -2,5 +2,6 @@
 
 **/[B,b]uild/*
 **/[P,p]ython/*
+python*.exe
 python*.zip
-
+**/__pycache__/*

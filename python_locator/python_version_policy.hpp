@@ -12,8 +12,8 @@
 namespace pyembed
 {
 
-    const const std::string VERSION_POLICY_FILENAME = "python_required_version.txt";
-    const const std::string VERSION_DEFAULT_MIN_VALUE = "3.11.0";
+    const std::string VERSION_POLICY_FILENAME = "python_required_version.txt";
+    const std::string VERSION_DEFAULT_MIN_VALUE = "3.11.0";
 
     class PythonVersionPolicy
     {
