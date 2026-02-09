@@ -1,8 +1,9 @@
 
-
 **/[B,b]uild/*
 **/[P,p]ython/*
 python*.exe
 python*.zip
 **/__pycache__/*
-**/external/*
+*.obj
+*.res
+

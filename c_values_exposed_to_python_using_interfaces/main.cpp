@@ -193,6 +193,10 @@ int main()
         return 1;
     }
 
+    initscr();   // start curses mode
+    noecho();    // don't echo keypresses
+    curs_set(0); // hide cursor
+
     // ---------------------------------------------------------
     // Main loop
     // ---------------------------------------------------------
@@ -204,14 +208,16 @@ int main()
         {
             Py_DECREF(result);
 
-            std::cout << "\33[2K\r"; // clear line
+            // Clear screen and redraw using ncurses
+            clear();
 
-            std::cout << "Health: " << std::setw(3) << health
-                      << " | Speed: " << std::setw(6) << std::left
-                      << std::fixed << std::setprecision(2) << speed
-                      << " | Alive: " << std::setw(5) << std::left << (alive ? "true" : "false")
-                      << " | Name: " << std::setw(6) << std::left << name
-                      << std::flush;
+            mvprintw(1, 2, "=== C++ / Python Dashboard ===");
+            mvprintw(3, 4, "health : %d", health);
+            mvprintw(4, 4, "speed  : %.2f", speed);
+            mvprintw(5, 4, "alive  : %s", alive ? "true" : "false");
+            mvprintw(6, 4, "name   : %s", name.c_str());
+
+            refresh();    
         }
         else
         {
