@@ -9,11 +9,11 @@
 #include <csignal>
 #include <thread>
 #include <chrono>
-#if defined(_WIN32)
-#include <curses.h> // PDCurses
-#else
-#include <ncurses.h> // Linux
-#endif
+// #if defined(_WIN32)
+// #include <curses.h> // PDCurses
+// #else
+// #include <ncurses.h> // Linux
+// #endif
 
 #include <iomanip>
 
@@ -164,7 +164,6 @@ int main()
     // ---------------------------------------------------------
     // Import Python controller.py script
     // ---------------------------------------------------------
-    
 
     PyObject *moduleName = PyUnicode_FromString("controller");
     PyObject *module = PyImport_Import(moduleName);
@@ -174,25 +173,26 @@ int main()
     {
         PyErr_Print();
         std::cerr << "Failed to import Python module controller.py\n";
+        // endwin();
         Py_Finalize();
         return 1;
     }
 
-    initscr();            // start curses mode
-    start_color();        // enable color if possible
-    use_default_colors(); // allow default terminal colors
-    noecho();             // don't echo keypresses
-    curs_set(0);          // hide cursor
-    // Initialize color pairs (foreground colors with default background)
-    // Skip COLOR_BLACK (0)
-    init_pair(1, COLOR_GREEN, -1);
-    init_pair(2, COLOR_YELLOW, -1);
-    init_pair(3, COLOR_BLUE, -1);
-    init_pair(4, COLOR_MAGENTA, -1);
-    init_pair(5, COLOR_CYAN, -1);
-    init_pair(6, COLOR_WHITE, -1);
+    // initscr();            // start curses mode
+    // start_color();        // enable color if possible
+    // use_default_colors(); // allow default terminal colors
+    // noecho();             // don't echo keypresses
+    // curs_set(0);          // hide cursor
+    // // Initialize color pairs (foreground colors with default background)
+    // // Skip COLOR_BLACK (0)
+    // init_pair(1, COLOR_GREEN, -1);
+    // init_pair(2, COLOR_YELLOW, -1);
+    // init_pair(3, COLOR_BLUE, -1);
+    // init_pair(4, COLOR_MAGENTA, -1);
+    // init_pair(5, COLOR_CYAN, -1);
+    // init_pair(6, COLOR_WHITE, -1);
 
-    int total_colors = 6; // We only initialized 6 colors (1-6), so cycle through them
+    // int total_colors = 6; // We only initialized 6 colors (1-6), so cycle through them
 
     // ---------------------------------------------------------
     // Bind C++ variables sections
@@ -220,6 +220,7 @@ int main()
         std::cerr << "Function update_values() not found or not callable\n";
         Py_XDECREF(updateFunc);
         Py_DECREF(module);
+        // endwin();
         Py_Finalize();
         return 1;
     }
@@ -227,40 +228,62 @@ int main()
     // ---------------------------------------------------------
     // Main loop
     // ---------------------------------------------------------
-    while (running)
+    // while (running)
+    // {
+    //     PyObject *result = PyObject_CallObject(updateFunc, nullptr);
+
+    //     if (result)
+    //     {
+    //         Py_DECREF(result);
+    //         // For demonstration, print the current values in the terminal
+
+    //     }
+    //     else
+    //     {
+    //         if (PyErr_ExceptionMatches(PyExc_KeyboardInterrupt))
+    //         {
+    //             // User pressed Ctrl+C inside Python code
+    //             PyErr_Clear();
+    //             running = false;
+    //             continue;
+    //         }
+
+    //         // Other Python exceptions
+    //         PyErr_Print();
+    //         break;
+    //     }
+
+    //     // std::this_thread::sleep_for(std::chrono::microseconds(16667)); // ~60 FPS
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
+    // }
+
+    PyObject *result = PyObject_CallObject(updateFunc, nullptr);
+
+    if (result)
     {
-        PyObject *result = PyObject_CallObject(updateFunc, nullptr);
-
-        if (result)
+        Py_DECREF(result);
+        // For demonstration, print the current values in the terminal
+    }
+    else
+    {
+        if (PyErr_ExceptionMatches(PyExc_KeyboardInterrupt))
         {
-            Py_DECREF(result);
-            // For demonstration, print the current values in the terminal
-
-
-
-        }
-        else
-        {
-            if (PyErr_ExceptionMatches(PyExc_KeyboardInterrupt))
-            {
-                // User pressed Ctrl+C inside Python code
-                PyErr_Clear();
-                running = false;
-                continue;
-            }
-
-            // Other Python exceptions
-            PyErr_Print();
-            break;
+            // User pressed Ctrl+C inside Python code
+            PyErr_Clear();
+            // running = false;
+            // continue;
         }
 
-        // std::this_thread::sleep_for(std::chrono::microseconds(16667)); // ~60 FPS
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
+        // Other Python exceptions
+        PyErr_Print();
+        // break;
+        std::cout << "There is exceptions";
     }
 
     // ---------------------------------------------------------
     // Cleanup
     // ---------------------------------------------------------
+    // endwin();
     Py_DECREF(updateFunc);
     Py_DECREF(module);
     Py_Finalize();

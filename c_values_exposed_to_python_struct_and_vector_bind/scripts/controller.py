@@ -11,8 +11,8 @@ def update_values():
     cpp.player.health = 150
     cpp.player.speed = 7.25
 
-    print("Updated Player health:", cpp.player.health)
-    print("Updated Player speed:", cpp.player.speed)
+    print("Updated Player health in Python script:", cpp.player.health)
+    print("Updated Player speed in Python script:", cpp.player.speed)
 
     print("\n=== 2) Vector of simple types: scores ===")
     print("Scores length:", len(cpp.scores))

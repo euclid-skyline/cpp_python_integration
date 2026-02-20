@@ -1,8 +1,22 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <cstddef>  // for std::size_t
 
 #include "value_interface.hpp"    // BoundValue, ValueType
+
+// Forward declarations for function pointers
+std::size_t int_vec_size(void *ptr);
+void *int_vec_element_ptr(void *ptr, std::size_t idx);
+bool int_vec_append(void *ptr, void *val);
+
+std::size_t enemy_vec_size(void *ptr);
+void *enemy_vec_element_ptr(void *ptr, std::size_t idx);
+bool enemy_vec_append(void *ptr, void *val);
+
+std::size_t grid_vec_size(void *ptr);
+void *grid_vec_element_ptr(void *ptr, std::size_t idx);
+bool grid_vec_append(void *ptr, void *val);
 
 // 1. Simple struct
 struct Player
@@ -24,20 +38,24 @@ struct is_reflected_struct<Player> : std::true_type
 };
 
 template <>
-const StructInfo *get_struct_info<Player>()
+inline const StructInfo *get_struct_info<Player>()
 {
     return &PlayerInfo;
 }
 
 // 2. Vector of simple types
-std::vector<int> scores;
+extern std::vector<int> scores;
 // Meta info for vector of ints
 static VectorInfo IntVectorInfo = {
     ValueType::Int,
-    nullptr};
+    nullptr,
+    int_vec_size,
+    int_vec_element_ptr,
+    int_vec_append
+};
 // Specialize the trait to mark std::vector<int> as a reflected vector
 template <>
-const VectorInfo *get_vector_info<int>()
+inline const VectorInfo *get_vector_info<int>()
 {
     return &IntVectorInfo;
 }
@@ -66,7 +84,7 @@ struct is_reflected_struct<Team> : std::true_type
 };
 
 template <>
-const StructInfo *get_struct_info<Team>()
+inline const StructInfo *get_struct_info<Team>()
 {
     return &TeamInfo;
 }
@@ -78,7 +96,7 @@ struct Enemy
     float x;
 };
 
-std::vector<Enemy> enemies;
+extern std::vector<Enemy> enemies;
 // Metadata for Enemy struct
 static StructInfo EnemyInfo = {
     "Enemy",
@@ -89,7 +107,11 @@ static StructInfo EnemyInfo = {
 // Metadata for vector of Enemy structs
 static VectorInfo EnemyVectorInfo = {
     ValueType::Struct,
-    &EnemyInfo};
+    &EnemyInfo,
+    enemy_vec_size,
+    enemy_vec_element_ptr,
+    enemy_vec_append
+};
 // Specialize the trait to mark std::vector<Enemy> as a reflected vector
 template <>
 struct is_reflected_struct<Enemy> : std::true_type
@@ -97,19 +119,19 @@ struct is_reflected_struct<Enemy> : std::true_type
 };
 
 template <>
-const StructInfo *get_struct_info<Enemy>()
+inline const StructInfo *get_struct_info<Enemy>()
 {
     return &EnemyInfo;
 }
 
 template <>
-const VectorInfo *get_vector_info<Enemy>()
+inline const VectorInfo *get_vector_info<Enemy>()
 {
     return &EnemyVectorInfo;
 }
 
 // 5) Vector containing vectors
-std::vector<std::vector<int>> grid;
+extern std::vector<std::vector<int>> grid;
 // Metadata for inner vector
 // static VectorInfo IntVectorInfo = { // Issue: duplicate symbol IntVectorInfo
 //     ValueType::Int,
@@ -117,16 +139,20 @@ std::vector<std::vector<int>> grid;
 // Metadata for outer vector
 static VectorInfo VectorOfIntVectorInfo = {
     ValueType::Vector,
-    &IntVectorInfo};
+    &IntVectorInfo,
+    grid_vec_size,
+    grid_vec_element_ptr,
+    grid_vec_append
+};
 // Specialize the trait to mark std::vector<std::vector<int>> as a reflected vector
 template <>
-const VectorInfo *get_vector_info<std::vector<int>>()
+inline const VectorInfo *get_vector_info<std::vector<int>>()
 {
     return &IntVectorInfo;
 }
 
 template <>
-const VectorInfo *get_vector_info<std::vector<std::vector<int>>>()
+inline const VectorInfo *get_vector_info<std::vector<std::vector<int>>>()
 {
     return &VectorOfIntVectorInfo;
 }

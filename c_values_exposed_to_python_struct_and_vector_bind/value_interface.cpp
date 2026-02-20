@@ -28,6 +28,7 @@ PyBoundValue *PyInterface::get_value(const std::string &name)
 // ============================================================
 //  PyInterface::wrap_field()
 //  - Creates the correct PyBoundValue subclass for a struct field
+//  - For scalar types only; structs and vectors handled by caller
 // ============================================================
 PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)
 {
@@ -49,78 +50,11 @@ PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)
         return new PyBoundString(field->name, *static_cast<std::string *>(fieldPtr));
 
     // ------------------------------------------------------------
-    // Struct type
+    // Struct and Vector types - caller handles these directly
     // ------------------------------------------------------------
     case ValueType::Struct:
-    {
-        const StructInfo *sinfo =
-            static_cast<const StructInfo *>(field->type_meta);
-
-        // Create BoundStruct for this field
-        BoundStruct *bstruct =
-            new BoundStruct(field->name, fieldPtr, sinfo);
-
-        // Wrap BoundStruct inside a PyBoundValue
-        struct PyBoundStructProxy : PyBoundValue
-        {
-            BoundStruct *bs;
-
-            PyBoundStructProxy(const std::string &n, BoundStruct *b)
-            {
-                name = n;
-                type = ValueType::Struct;
-                bs = b;
-            }
-
-            PyObject *to_python() override
-            {
-                return StructProxy_New(bs);
-            }
-
-            bool from_python(PyObject *) override
-            {
-                return false;   // Struct assignment not supported
-            }
-        };  
-
-        return new PyBoundStructProxy(field->name, bstruct);
-    }
-
-    // ------------------------------------------------------------
-    // Vector type
-    // ------------------------------------------------------------
     case ValueType::Vector:
-    {
-        const VectorInfo *vinfo =
-            static_cast<const VectorInfo *>(field->type_meta);
-
-        BoundVector *bvec =
-            new BoundVector(field->name, fieldPtr, vinfo);
-
-        struct PyBoundVectorProxy : PyBoundValue
-        {
-            BoundVector *bv;
-
-            PyBoundVectorProxy(const std::string &n, BoundVector *v)
-            {
-                name = n;
-                type = ValueType::Vector;
-                bv = v;
-            }
-
-            PyObject *to_python() override
-            {
-                return VectorProxy_New(bv);
-            }
-
-            bool from_python(PyObject *) override
-            {
-                return false;   // Vector assignment not supported
-            }
-        };
-
-        return new PyBoundVectorProxy(field->name, bvec);
-    }
+        return nullptr;
 
     default:
         return nullptr;
@@ -130,6 +64,7 @@ PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)
 // ============================================================
 //  PyInterface::wrap_vector_element()
 //  - Creates the correct PyBoundValue subclass for a vector element
+//  - For scalar types only; structs and vectors handled by caller
 // ============================================================
 PyBoundValue *PyInterface::wrap_vector_element(BoundVector *vec, void *elemPtr)
 {
@@ -153,76 +88,11 @@ PyBoundValue *PyInterface::wrap_vector_element(BoundVector *vec, void *elemPtr)
         return new PyBoundString(vec->name, *static_cast<std::string *>(elemPtr));
 
     // ------------------------------------------------------------
-    // Struct type
+    // Struct and Vector types - caller handles these directly
     // ------------------------------------------------------------
     case ValueType::Struct:
-    {
-        const StructInfo *sinfo =
-            static_cast<const StructInfo *>(info->element_meta);
-
-        BoundStruct *bstruct =
-            new BoundStruct(vec->name, elemPtr, sinfo);
-
-        struct PyBoundStructProxy : PyBoundValue
-        {
-            BoundStruct *bs;
-
-            PyBoundStructProxy(const std::string &n, BoundStruct *b)
-            {
-                name = n;
-                type = ValueType::Struct;
-                bs = b;
-            }
-
-            PyObject *to_python() override
-            {
-                return StructProxy_New(bs);
-            }
-
-            bool from_python(PyObject *) override
-            {
-                return false;   // Struct assignment not supported
-            }
-        };
-
-        return new PyBoundStructProxy(vec->name, bstruct);
-    }
-
-    // ------------------------------------------------------------
-    // Vector type (vector of vector)
-    // ------------------------------------------------------------
     case ValueType::Vector:
-    {
-        const VectorInfo *vinfo =
-            static_cast<const VectorInfo *>(info->element_meta);
-
-        BoundVector *bvec =
-            new BoundVector(vec->name, elemPtr, vinfo);
-
-        struct PyBoundVectorProxy : PyBoundValue
-        {
-            BoundVector *bv;
-
-            PyBoundVectorProxy(const std::string &n, BoundVector *v)
-            {
-                name = n;
-                type = ValueType::Vector;
-                bv = v;
-            }
-
-            PyObject *to_python() override
-            {
-                return VectorProxy_New(bv);
-            }
-
-            bool from_python(PyObject *) override
-            {
-                return false;   // Vector assignment not supported
-            }
-        };
-
-        return new PyBoundVectorProxy(vec->name, bvec);
-    }
+        return nullptr;
 
     default:
         return nullptr;

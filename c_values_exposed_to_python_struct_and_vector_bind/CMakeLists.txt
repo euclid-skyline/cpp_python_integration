@@ -20,6 +20,7 @@ add_executable(EmbeddedPythonLoop
                 cpp_module.cpp
                 python_proxy.cpp 
                 value_interface.cpp
+                data_game_traits.cpp
                 )
 
 # ---------------------------------------------------------

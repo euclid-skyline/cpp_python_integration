@@ -26,8 +26,8 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 {
     const char *name = PyUnicode_AsUTF8(attr);
 
-    // [C++20 FIX] use PyInterface::get_value wrapper (added for compatibility)
-    PyBoundValue *val = PyInterface::get_value(name);
+    // Use get_value_raw() to get any BoundValue (scalar, struct, or vector)
+    BoundValue *val = PyInterface::get_value_raw(name);
 
     if (!val)
     {
@@ -35,7 +35,25 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
         return nullptr;
     }
 
-    return val->to_python();
+    // Dispatch based on actual type
+    switch (val->type)
+    {
+    case ValueType::Struct:
+        return StructProxy_New(static_cast<BoundStruct *>(val));
+    
+    case ValueType::Vector:
+        return VectorProxy_New(static_cast<BoundVector *>(val));
+    
+    default:
+        // For scalar types, use PyBoundValue interface
+        PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
+        if (!pyval)
+        {
+            PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
+            return nullptr;
+        }
+        return pyval->to_python();
+    }
 }
 
 // ------------------------------------------------------------
@@ -46,8 +64,7 @@ static int cppproxy_setattro(PyObject *, PyObject *attr, PyObject *value)
 {
     const char *name = PyUnicode_AsUTF8(attr);
 
-    // [C++20 FIX] use PyInterface::get_value wrapper
-    PyBoundValue *val = PyInterface::get_value(name);
+    BoundValue *val = PyInterface::get_value_raw(name);
 
     if (!val)
     {
@@ -55,7 +72,22 @@ static int cppproxy_setattro(PyObject *, PyObject *attr, PyObject *value)
         return -1;
     }
 
-    if (!val->from_python(value))
+    // Structs and vectors cannot be reassigned (only modified via their proxy)
+    if (val->type == ValueType::Struct || val->type == ValueType::Vector)
+    {
+        PyErr_Format(PyExc_TypeError, "Cannot reassign struct or vector '%s'", name);
+        return -1;
+    }
+
+    // For scalar types
+    PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
+    if (!pyval)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
+        return -1;
+    }
+
+    if (!pyval->from_python(value))
     {
         PyErr_Format(PyExc_TypeError, "Type mismatch for '%s'", name);
         return -1;
@@ -123,6 +155,20 @@ typedef struct
 } StructProxyObject;
 
 // ------------------------------------------------------------
+// Destructor for StructProxy
+// ------------------------------------------------------------
+static void StructProxy_dealloc(PyObject *self)
+{
+    StructProxyObject *proxy = (StructProxyObject *)self;
+    
+    // Delete the BoundStruct wrapper
+    delete proxy->bound;
+    
+    // Free the Python object
+    PyObject_Del(self);
+}
+
+// ------------------------------------------------------------
 // __getattr__
 // Called when Python does:  cpp.player.health
 // ------------------------------------------------------------
@@ -141,10 +187,42 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
 
     void *fieldPtr = proxy->bound->get_field_ptr(field);
 
-    // [C++20 FIX] wrap_field added to PyInterface
-    PyBoundValue *val = PyInterface::wrap_field(field, fieldPtr);
-
-    return val->to_python();
+    // Handle directly based on field type
+    switch (field->type)
+    {
+    case ValueType::Int:
+        return PyLong_FromLong(*static_cast<int*>(fieldPtr));
+    
+    case ValueType::Float:
+        return PyFloat_FromDouble(*static_cast<float*>(fieldPtr));
+    
+    case ValueType::Bool:
+    {
+        ByteBool b = *static_cast<ByteBool*>(fieldPtr);
+        return PyBool_FromLong((b != FALSE_BYTE) ? 1 : 0);
+    }
+    
+    case ValueType::String:
+        return PyUnicode_FromString(static_cast<std::string*>(fieldPtr)->c_str());
+    
+    case ValueType::Struct:
+    {
+        const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
+        BoundStruct *bstruct = new BoundStruct(field->name, fieldPtr, sinfo);
+        return StructProxy_New(bstruct);
+    }
+    
+    case ValueType::Vector:
+    {
+        const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
+        BoundVector *bvec = new BoundVector(field->name, fieldPtr, vinfo);
+        return VectorProxy_New(bvec);
+    }
+    
+    default:
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported field type");
+        return nullptr;
+    }
 }
 
 // ------------------------------------------------------------
@@ -166,10 +244,61 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
 
     void *fieldPtr = proxy->bound->get_field_ptr(field);
 
-    // [C++20 FIX] wrap_field added to PyInterface
-    PyBoundValue *val = PyInterface::wrap_field(field, fieldPtr);
-
-    return val->from_python(value) ? 0 : -1;
+    // Handle assignment based on field type
+    switch (field->type)
+    {
+    case ValueType::Int:
+        if (!PyLong_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected int");
+            return -1;
+        }
+        *static_cast<int*>(fieldPtr) = (int)PyLong_AsLong(value);
+        return 0;
+    
+    case ValueType::Float:
+        if (!PyFloat_Check(value) && !PyLong_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected float");
+            return -1;
+        }
+        *static_cast<float*>(fieldPtr) = (float)PyFloat_AsDouble(value);
+        return 0;
+    
+    case ValueType::Bool:
+    {
+        int truth = PyObject_IsTrue(value);
+        if (truth < 0)
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected bool");
+            return -1;
+        }
+        *static_cast<ByteBool*>(fieldPtr) = (truth != 0) ? TRUE_BYTE : FALSE_BYTE;
+        return 0;
+    }
+    
+    case ValueType::String:
+        if (!PyUnicode_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected string");
+            return -1;
+        }
+        {
+            PyObject *utf8 = PyUnicode_AsUTF8String(value);
+            *static_cast<std::string*>(fieldPtr) = PyBytes_AsString(utf8);
+            Py_DECREF(utf8);
+        }
+        return 0;
+    
+    case ValueType::Struct:
+    case ValueType::Vector:
+        PyErr_SetString(PyExc_TypeError, "Cannot reassign struct or vector field");
+        return -1;
+    
+    default:
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported field type");
+        return -1;
+    }
 }
 
 // ------------------------------------------------------------
@@ -179,7 +308,7 @@ PyTypeObject StructProxyType = {
     PyVarObject_HEAD_INIT(NULL, 0) "cpp.StructProxy", // tp_name
     sizeof(StructProxyObject),                        // tp_basicsize
     0,                                                // tp_itemsize
-    0,                                                // tp_dealloc
+    StructProxy_dealloc,                              // tp_dealloc
     0,                                                // tp_vectorcall_offset
     0,                                                // tp_getattr
     0,                                                // tp_setattr
@@ -220,6 +349,20 @@ typedef struct
 } VectorProxyObject;
 
 // ------------------------------------------------------------
+// Destructor for VectorProxy
+// ------------------------------------------------------------
+static void VectorProxy_dealloc(PyObject *self)
+{
+    VectorProxyObject *proxy = (VectorProxyObject *)self;
+    
+    // Delete the BoundVector wrapper
+    delete proxy->bound;
+    
+    // Free the Python object
+    PyObject_Del(self);
+}
+
+// ------------------------------------------------------------
 // __len__
 // ------------------------------------------------------------
 static Py_ssize_t VectorProxy_len(PyObject *self)
@@ -242,12 +385,44 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     }
 
     void *elemPtr = proxy->bound->element_ptr(index);
+    const VectorInfo *info = proxy->bound->info();
 
-    // [C++20 FIX] wrap_vector_element added to PyInterface
-    PyBoundValue *val =
-        PyInterface::wrap_vector_element(proxy->bound, elemPtr);
-
-    return val->to_python();
+    // Handle directly based on element type
+    switch (info->element_type)
+    {
+    case ValueType::Int:
+        return PyLong_FromLong(*static_cast<int*>(elemPtr));
+    
+    case ValueType::Float:
+        return PyFloat_FromDouble(*static_cast<float*>(elemPtr));
+    
+    case ValueType::Bool:
+    {
+        ByteBool b = *static_cast<ByteBool*>(elemPtr);
+        return PyBool_FromLong((b != FALSE_BYTE) ? 1 : 0);
+    }
+    
+    case ValueType::String:
+        return PyUnicode_FromString(static_cast<std::string*>(elemPtr)->c_str());
+    
+    case ValueType::Struct:
+    {
+        const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
+        BoundStruct *bstruct = new BoundStruct(proxy->bound->name, elemPtr, sinfo);
+        return StructProxy_New(bstruct);
+    }
+    
+    case ValueType::Vector:
+    {
+        const VectorInfo *vinfo = static_cast<const VectorInfo *>(info->element_meta);
+        BoundVector *bvec = new BoundVector(proxy->bound->name, elemPtr, vinfo);
+        return VectorProxy_New(bvec);
+    }
+    
+    default:
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported element type");
+        return nullptr;
+    }
 }
 
 // ------------------------------------------------------------
@@ -264,12 +439,63 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
     }
 
     void *elemPtr = proxy->bound->element_ptr(index);
+    const VectorInfo *info = proxy->bound->info();
 
-    // [C++20 FIX] wrap_vector_element added to PyInterface
-    PyBoundValue *val =
-        PyInterface::wrap_vector_element(proxy->bound, elemPtr);
-
-    return val->from_python(value) ? 0 : -1;
+    // Handle assignment based on element type
+    switch (info->element_type)
+    {
+    case ValueType::Int:
+        if (!PyLong_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected int");
+            return -1;
+        }
+        *static_cast<int*>(elemPtr) = (int)PyLong_AsLong(value);
+        return 0;
+    
+    case ValueType::Float:
+        if (!PyFloat_Check(value) && !PyLong_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected float");
+            return -1;
+        }
+        *static_cast<float*>(elemPtr) = (float)PyFloat_AsDouble(value);
+        return 0;
+    
+    case ValueType::Bool:
+    {
+        int truth = PyObject_IsTrue(value);
+        if (truth < 0)
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected bool");
+            return -1;
+        }
+        *static_cast<ByteBool*>(elemPtr) = (truth != 0) ? TRUE_BYTE : FALSE_BYTE;
+        return 0;
+    }
+    
+    case ValueType::String:
+        if (!PyUnicode_Check(value))
+        {
+            PyErr_SetString(PyExc_TypeError, "Expected string");
+            return -1;
+        }
+        {
+            PyObject *utf8 = PyUnicode_AsUTF8String(value);
+            *static_cast<std::string*>(elemPtr) = PyBytes_AsString(utf8);
+            Py_DECREF(utf8);
+        }
+        return 0;
+    
+    case ValueType::Struct:
+    case ValueType::Vector:
+        PyErr_SetString(PyExc_TypeError, "Cannot reassign struct or vector element");
+        return -1;
+    
+    default:
+        PyErr_SetString(PyExc_RuntimeError, "Unsupported element type");
+        return -1;
+    }
 }
 
 // ------------------------------------------------------------
@@ -367,7 +593,7 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
         auto *vp = reinterpret_cast<VectorProxyObject *>(value);
         BoundVector *inner = vp->bound;
         void *inner_raw = inner->raw_vector();
-        vec->append_from_cpp(&inner_raw); // store pointer to inner vector
+        vec->append_from_cpp(inner_raw); // FIXED: pass pointer directly, not address
         break;
     }
 
@@ -410,7 +636,7 @@ PyTypeObject VectorProxyType = {
     PyVarObject_HEAD_INIT(NULL, 0) "cpp.VectorProxy", // tp_name
     sizeof(VectorProxyObject),                        // tp_basicsize
     0,                                                // tp_itemsize
-    0,                                                // tp_dealloc
+    VectorProxy_dealloc,                              // tp_dealloc
     0,                                                // tp_vectorcall_offset
     0,                                                // tp_getattr
     0,                                                // tp_setattr
