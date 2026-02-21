@@ -18,6 +18,10 @@ std::size_t grid_vec_size(void *ptr);
 void *grid_vec_element_ptr(void *ptr, std::size_t idx);
 bool grid_vec_append(void *ptr, void *val);
 
+std::size_t enemy_waves_vec_size(void *ptr);
+void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx);
+bool enemy_waves_vec_append(void *ptr, void *val);
+
 // 1. Simple struct
 struct Player
 {
@@ -148,6 +152,24 @@ template <>
 inline const VectorInfo *get_vector_info<std::vector<int>>()
 {
     return &VectorOfIntVectorInfo;
+}
+
+// 6) Vector containing vectors of Enemy structs
+extern std::vector<std::vector<Enemy>> enemy_waves;
+// Metadata for vector of Enemy vectors
+static VectorInfo VectorOfEnemyVectorInfo = {
+    ValueType::Vector,
+    &EnemyVectorInfo,
+    enemy_waves_vec_size,
+    enemy_waves_vec_element_ptr,
+    enemy_waves_vec_append};
+
+// Specialize get_vector_info for the element type of enemy_waves's outer vector
+// enemy_waves is std::vector<std::vector<Enemy>>, so its element type is std::vector<Enemy>
+template <>
+inline const VectorInfo *get_vector_info<std::vector<Enemy>>()
+{
+    return &VectorOfEnemyVectorInfo;
 }
 
 //-------------------------------------------------------

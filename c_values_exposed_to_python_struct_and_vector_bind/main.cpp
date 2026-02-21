@@ -219,6 +219,12 @@ int main()
         {5, 6},
         {7, 8, 9, 10, 11}};
     PyInterface::bind("grid", grid);
+    // 6) Bind the vector of vectors of enemies (enemy waves/spawns)
+    enemy_waves = {
+        {{30, 1.0f}, {40, 2.0f}},
+        {{50, 0.5f}, {60, 1.5f}, {70, 2.5f}},
+        {{80, 3.0f}}};
+    PyInterface::bind("enemy_waves", enemy_waves);
 
     // ----------------------------------------------------------
 

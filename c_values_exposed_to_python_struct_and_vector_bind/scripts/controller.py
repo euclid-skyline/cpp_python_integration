@@ -32,7 +32,7 @@ def update_values():
     # Modify element
     cpp.scores[1] = 99
     print(
-        "Scores after modification in Python script:",
+        "Scores after modification second element in Python script:",
         [cpp.scores[i] for i in range(len(cpp.scores))],
     )
 
@@ -90,13 +90,13 @@ def update_values():
         cpp.enemies[0].x,
     )
 
-    print("\n=== 5) Vector containing vectors: grid ===")
+    print("\n=== 5) Vector containing vectors of ints: grid ===")
     print("Grid outer size in C++:", len(cpp.grid))
 
     # Access nested elements
     for i in range(len(cpp.grid)):
         row = cpp.grid[i]
-        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])    
+        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])
 
     # Append inner vectors
     row = cpp.grid.append_new_vector()
@@ -109,7 +109,7 @@ def update_values():
     # Access nested elements
     for i in range(len(cpp.grid)):
         row = cpp.grid[i]
-        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])    
+        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])
 
     # Modify nested element
     if len(cpp.grid) > 0 and len(cpp.grid[0]) > 1:
@@ -119,3 +119,38 @@ def update_values():
     for i in range(len(cpp.grid)):
         row = cpp.grid[i]
         print(f"Row {i}:", [row[j] for j in range(len(row))])
+    print("\n=== 6) Vector containing vectors of Enemy structs: enemy_waves ===")
+    print("Enemy waves (spawns) count in C++:", len(cpp.enemy_waves))
+
+    # Access nested enemies
+    for i in range(len(cpp.enemy_waves)):
+        wave = cpp.enemy_waves[i]
+        print(f"\nWave {i} has {len(wave)} enemies:")
+        for j in range(len(wave)):
+            enemy = wave[j]
+            print(f"  Enemy {j}: health={enemy.health}, x={enemy.x}")
+
+    # Append a new wave of enemies
+    new_wave = cpp.enemy_waves.append_new_vector()
+    new_wave.append_new().health = 100
+    new_wave[-1].x = 5.0
+    new_wave.append_new().health = 110
+    new_wave[-1].x = 6.5
+
+    print("Enemy waves count after append in Python script:", len(cpp.enemy_waves))
+
+    # Access all waves again
+    for i in range(len(cpp.enemy_waves)):
+        wave = cpp.enemy_waves[i]
+        print(f"\nWave {i} has {len(wave)} enemies:")
+        for j in range(len(wave)):
+            enemy = wave[j]
+            print(f"  Enemy {j}: health={enemy.health}, x={enemy.x}")
+
+    # Modify nested enemy struct
+    if len(cpp.enemy_waves) > 0 and len(cpp.enemy_waves[0]) > 0:
+        cpp.enemy_waves[0][0].health = 999
+        cpp.enemy_waves[0][0].x = 99.99
+        print(
+            f"\nModified first enemy in first wave: health={cpp.enemy_waves[0][0].health}, x={cpp.enemy_waves[0][0].x}"
+        )
