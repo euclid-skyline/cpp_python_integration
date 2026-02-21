@@ -4,6 +4,7 @@ import cpp
 def update_values():
 
     print("=== 1) Simple struct: Player ===")
+    print("Player fields count in C++:", len(cpp.player))
     print("Player health in C++:", cpp.player.health)
     print("Player speed in C++:", cpp.player.speed)
 
@@ -37,6 +38,7 @@ def update_values():
     )
 
     print("\n=== 3) Struct containing a vector: Team ===")
+    print("Team fields count in C++:", len(cpp.team))
     print("Team average in C++:", cpp.team.average)
     print(
         "Team scores in C++:", [cpp.team.scores[i] for i in range(len(cpp.team.scores))]
@@ -46,6 +48,7 @@ def update_values():
     cpp.team.scores[0] = 111
     cpp.team.scores.append(444)
 
+    print("Team fields count after append in Python script:", len(cpp.team))
     print(
         "Updated Team scores in Python script:",
         [cpp.team.scores[i] for i in range(len(cpp.team.scores))],

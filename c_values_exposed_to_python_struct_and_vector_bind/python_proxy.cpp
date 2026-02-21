@@ -349,6 +349,38 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
 }
 
 // ------------------------------------------------------------
+// __len__
+// Returns the number of fields in the struct
+// Called when Python does: len(cpp.player)
+// ------------------------------------------------------------
+static Py_ssize_t StructProxy_len(PyObject *self)
+{
+    StructProxyObject *proxy = (StructProxyObject *)self;
+
+    if (!proxy->bound || !proxy->bound->info())
+        return 0;
+
+    return static_cast<Py_ssize_t>(proxy->bound->info()->fields.size());
+}
+
+// ------------------------------------------------------------
+// Sequence methods for StructProxy
+// Enables len() to work on struct proxies
+// ------------------------------------------------------------
+static PySequenceMethods StructProxy_sequence_methods = {
+    StructProxy_len, // sq_length
+    0,               // sq_concat
+    0,               // sq_repeat
+    0,               // sq_item
+    0,               // sq_slice
+    0,               // sq_ass_item
+    0,               // sq_ass_slice
+    0,               // sq_contains
+    0,               // sq_inplace_concat
+    0,               // sq_inplace_repeat
+};
+
+// ------------------------------------------------------------
 // StructProxy Python type definition
 // ------------------------------------------------------------
 PyTypeObject StructProxyType = {
@@ -362,7 +394,7 @@ PyTypeObject StructProxyType = {
     0,                                                   // tp_as_async
     0,                                                   // tp_repr
     0,                                                   // tp_as_number
-    0,                                                   // tp_as_sequence
+    &StructProxy_sequence_methods,                       // tp_as_sequence (NEW!)
     0,                                                   // tp_as_mapping
     0,                                                   // tp_hash
     0,                                                   // tp_call
