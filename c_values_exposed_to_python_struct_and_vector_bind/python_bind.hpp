@@ -97,9 +97,10 @@ struct PyBoundString : PyBoundValue
     {
         if (!PyUnicode_Check(obj))
             return false;
-        PyObject *utf8 = PyUnicode_AsUTF8String(obj);
-        *ptr = PyBytes_AsString(utf8);
-        Py_DECREF(utf8);
+        const char *str = PyUnicode_AsUTF8(obj);
+        if (!str)
+            return false;
+        *ptr = str; // std::string copies the content
         return true;
     }
 };
