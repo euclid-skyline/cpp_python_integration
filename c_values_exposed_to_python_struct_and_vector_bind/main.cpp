@@ -202,13 +202,22 @@ int main()
     Player player = {100, 5.5f};
     PyInterface::bind("player", player);
     // 2) Bind the vector
+    scores = {1, 2, 3};
     PyInterface::bind("scores", scores);
     // 3) Create an instance of Team
     Team team = {{10, 20, 30}, 20.0f};
     PyInterface::bind("team", team);
     // 4) Bind the vector of structs
+    enemies = {
+        {50, 2.0f},
+        {75, 4.5f},
+        {120, 1.5f}};
     PyInterface::bind("enemies", enemies);
     // 5) Bind the vector of vectors
+    grid = {
+        {1, 2, 3, 4},
+        {5, 6},
+        {7, 8, 9, 10, 11}};
     PyInterface::bind("grid", grid);
 
     // ----------------------------------------------------------

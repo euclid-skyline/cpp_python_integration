@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <cstddef>  // for std::size_t
+#include <cstddef> // for std::size_t
 
-#include "value_interface.hpp"    // BoundValue, ValueType
+#include "value_interface.hpp" // BoundValue, ValueType
 
 // Forward declarations for function pointers
 std::size_t int_vec_size(void *ptr);
@@ -51,8 +51,7 @@ static VectorInfo IntVectorInfo = {
     nullptr,
     int_vec_size,
     int_vec_element_ptr,
-    int_vec_append
-};
+    int_vec_append};
 // Specialize the trait to mark std::vector<int> as a reflected vector
 template <>
 inline const VectorInfo *get_vector_info<int>()
@@ -110,8 +109,7 @@ static VectorInfo EnemyVectorInfo = {
     &EnemyInfo,
     enemy_vec_size,
     enemy_vec_element_ptr,
-    enemy_vec_append
-};
+    enemy_vec_append};
 // Specialize the trait to mark std::vector<Enemy> as a reflected vector
 template <>
 struct is_reflected_struct<Enemy> : std::true_type
@@ -142,17 +140,12 @@ static VectorInfo VectorOfIntVectorInfo = {
     &IntVectorInfo,
     grid_vec_size,
     grid_vec_element_ptr,
-    grid_vec_append
-};
-// Specialize the trait to mark std::vector<std::vector<int>> as a reflected vector
+    grid_vec_append};
+
+// Specialize get_vector_info for the element type of grid's outer vector
+// grid is std::vector<std::vector<int>>, so its element type is std::vector<int>
 template <>
 inline const VectorInfo *get_vector_info<std::vector<int>>()
-{
-    return &IntVectorInfo;
-}
-
-template <>
-inline const VectorInfo *get_vector_info<std::vector<std::vector<int>>>()
 {
     return &VectorOfIntVectorInfo;
 }

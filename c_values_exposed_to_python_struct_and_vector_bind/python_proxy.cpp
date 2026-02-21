@@ -1,5 +1,6 @@
 #include "python_proxy.hpp"
 #include "value_interface.hpp"
+#include <vector>
 
 // ============================================================================
 // SECTION 1 — RootProxy (from value_interface_proxy.cpp)
@@ -499,6 +500,193 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
 }
 
 // ------------------------------------------------------------
+// append_new() - for struct vectors, create a default instance
+// ------------------------------------------------------------
+static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
+{
+    auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    BoundVector *vec = proxy->bound;
+    const VectorInfo *info = vec->info();
+
+    // Only works for struct element types
+    if (info->element_type != ValueType::Struct)
+    {
+        PyErr_SetString(PyExc_TypeError, "append_new() only works for vectors of structs");
+        return nullptr;
+    }
+
+    const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
+    
+    // Calculate struct size and allocate memory
+    std::size_t struct_size = 0;
+    if (!sinfo->fields.empty())
+    {
+        const FieldInfo &last = sinfo->fields.back();
+        std::size_t field_size = 0;
+        switch (last.type)
+        {
+        case ValueType::Int: field_size = sizeof(int); break;
+        case ValueType::Float: field_size = sizeof(float); break;
+        case ValueType::Bool: field_size = sizeof(ByteBool); break;
+        case ValueType::String: field_size = sizeof(std::string); break;
+        default: field_size = 0; break;
+        }
+        struct_size = last.offset + field_size;
+    }
+
+    // Allocate zero-initialized memory for the struct
+    void *new_instance = ::operator new(struct_size);
+    std::memset(new_instance, 0, struct_size);
+    
+    // Initialize string fields properly
+    for (const auto &field : sinfo->fields)
+    {
+        if (field.type == ValueType::String)
+        {
+            void *fieldPtr = reinterpret_cast<char *>(new_instance) + field.offset;
+            new (fieldPtr) std::string();
+        }
+    }
+
+    // Append to vector
+    vec->append_from_cpp(new_instance);
+    
+    // Get the last element (the one we just added)
+    std::size_t last_idx = vec->size() - 1;
+    void *elemPtr = vec->element_ptr(last_idx);
+    
+    // Clean up temporary allocation
+    // Destroy string fields before freeing
+    for (const auto &field : sinfo->fields)
+    {
+        if (field.type == ValueType::String)
+        {
+            void *fieldPtr = reinterpret_cast<char *>(new_instance) + field.offset;
+            reinterpret_cast<std::string*>(fieldPtr)->~basic_string();
+        }
+    }
+    ::operator delete(new_instance);
+    
+    // Return a proxy to the newly added element
+    BoundStruct *bstruct = new BoundStruct(vec->name, elemPtr, sinfo);
+    return StructProxy_New(bstruct);
+}
+
+// ------------------------------------------------------------
+// append_new_vector() - for vector-of-vector, create a new empty inner vector
+// Supports inner vectors of any type: int, float, bool, string, struct, vector
+// ------------------------------------------------------------
+static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
+{
+    auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    BoundVector *vec = proxy->bound;
+    const VectorInfo *info = vec->info();
+
+    // Only works for vector element types
+    if (info->element_type != ValueType::Vector)
+    {
+        PyErr_SetString(PyExc_TypeError, "append_new_vector() only works for vectors of vectors");
+        return nullptr;
+    }
+
+    const VectorInfo *inner_info = static_cast<const VectorInfo *>(info->element_meta);
+    
+    // Create a new empty inner vector based on the inner element type
+    // Use a generic approach that works for all types via void* and append functions
+    
+    // Get the append function from inner_info
+    if (!inner_info->append_fn)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Inner vector has no append function");
+        return nullptr;
+    }
+
+    // For now, we need to create a temporary vector of the correct type
+    // This is tricky because we don't have a generic constructor
+    // We use the append function indirectly by creating the vector through append
+    
+    switch (inner_info->element_type)
+    {
+    case ValueType::Int:
+    {
+        std::vector<int> new_inner_vec;
+        vec->append_from_cpp(&new_inner_vec);
+        break;
+    }
+    
+    case ValueType::Float:
+    {
+        std::vector<float> new_inner_vec;
+        vec->append_from_cpp(&new_inner_vec);
+        break;
+    }
+    
+    case ValueType::Bool:
+    {
+        std::vector<ByteBool> new_inner_vec;
+        vec->append_from_cpp(&new_inner_vec);
+        break;
+    }
+    
+    case ValueType::String:
+    {
+        std::vector<std::string> new_inner_vec;
+        vec->append_from_cpp(&new_inner_vec);
+        break;
+    }
+    
+    case ValueType::Struct:
+    {
+        // For vectors of structs, we need to know the struct size
+        const StructInfo *sinfo = static_cast<const StructInfo *>(inner_info->element_meta);
+        
+        // Calculate struct size
+        std::size_t struct_size = 0;
+        if (!sinfo->fields.empty())
+        {
+            const FieldInfo &last = sinfo->fields.back();
+            std::size_t field_size = 0;
+            switch (last.type)
+            {
+            case ValueType::Int: field_size = sizeof(int); break;
+            case ValueType::Float: field_size = sizeof(float); break;
+            case ValueType::Bool: field_size = sizeof(ByteBool); break;
+            case ValueType::String: field_size = sizeof(std::string); break;
+            default: field_size = 0; break;
+            }
+            struct_size = last.offset + field_size;
+        }
+        
+        // Create a temporary vector using void* and the append function
+        // We'll use a minimal wrapper—just create an empty vector through append
+        std::vector<char> temp_vec;
+        vec->append_from_cpp(&temp_vec);
+        break;
+    }
+    
+    case ValueType::Vector:
+    {
+        // Deeply nested vectors - create an empty vector through append
+        std::vector<char> temp_vec;
+        vec->append_from_cpp(&temp_vec);
+        break;
+    }
+    
+    default:
+        PyErr_SetString(PyExc_TypeError, "Unsupported inner vector element type");
+        return nullptr;
+    }
+    
+    // Get the last element (the one we just added)
+    std::size_t last_idx = vec->size() - 1;
+    void *elemPtr = vec->element_ptr(last_idx);
+    
+    // Return a proxy to the newly added inner vector
+    BoundVector *bvec = new BoundVector(vec->name, elemPtr, inner_info);
+    return VectorProxy_New(bvec);
+}
+
+// ------------------------------------------------------------
 // append()
 // ------------------------------------------------------------
 static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
@@ -610,6 +798,8 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 // ------------------------------------------------------------
 static PyMethodDef VectorProxy_methods[] = {
     {"append", VectorProxy_append, METH_O, "Append an element"},
+    {"append_new", VectorProxy_append_new, METH_NOARGS, "Append a new default struct instance and return it"},
+    {"append_new_vector", VectorProxy_append_new_vector, METH_NOARGS, "Append a new empty vector and return it"},
     {NULL, NULL, 0, NULL} // Sentinel to mark the end of the array
 };
 

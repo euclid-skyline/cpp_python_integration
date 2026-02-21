@@ -4,8 +4,8 @@ import cpp
 def update_values():
 
     print("=== 1) Simple struct: Player ===")
-    print("Player health:", cpp.player.health)
-    print("Player speed:", cpp.player.speed)
+    print("Player health in C++:", cpp.player.health)
+    print("Player speed in C++:", cpp.player.speed)
 
     # Modify fields
     cpp.player.health = 150
@@ -16,78 +16,106 @@ def update_values():
 
     print("\n=== 2) Vector of simple types: scores ===")
     print("Scores length:", len(cpp.scores))
-
+    print(
+        "Scores in C++ before append:", [cpp.scores[i] for i in range(len(cpp.scores))]
+    )
     # Append values
     cpp.scores.append(10)
     cpp.scores.append(20)
     cpp.scores.append(30)
 
-    print("Scores after append:",
-          [cpp.scores[i] for i in range(len(cpp.scores))])
+    print(
+        "Scores after append in Python script:",
+        [cpp.scores[i] for i in range(len(cpp.scores))],
+    )
 
     # Modify element
     cpp.scores[1] = 99
-    print("Scores after modification:",
-          [cpp.scores[i] for i in range(len(cpp.scores))])
+    print(
+        "Scores after modification in Python script:",
+        [cpp.scores[i] for i in range(len(cpp.scores))],
+    )
 
-    # print("\n=== 3) Struct containing a vector: Team ===")
-    # print("Team average:", cpp.team.average)
-    # print("Team scores:", [cpp.team.scores[i] for i in range(len(cpp.team.scores))])
+    print("\n=== 3) Struct containing a vector: Team ===")
+    print("Team average in C++:", cpp.team.average)
+    print(
+        "Team scores in C++:", [cpp.team.scores[i] for i in range(len(cpp.team.scores))]
+    )
 
-    # # Modify inner vector
-    # cpp.team.scores[0] = 111
-    # cpp.team.scores.append(444)
+    # Modify inner vector
+    cpp.team.scores[0] = 111
+    cpp.team.scores.append(444)
 
-    # print("Updated Team scores:", [cpp.team.scores[i] for i in range(len(cpp.team.scores))])
+    print(
+        "Updated Team scores in Python script:",
+        [cpp.team.scores[i] for i in range(len(cpp.team.scores))],
+    )
 
-    # # Modify scalar field
-    # cpp.team.average = 33.3
-    # print("Updated Team average:", cpp.team.average)
+    # Modify scalar field
+    cpp.team.average = 33.3
+    print("Updated Team average in Python script:", cpp.team.average)
 
+    print("\n=== 4) Vector containing structs: enemies ===")
+    print("Enemies count in C++:", len(cpp.enemies))
 
-    # print("\n=== 4) Vector containing structs: enemies ===")
-    # print("Enemies count:", len(cpp.enemies))
+    for i in range(len(cpp.enemies)):
+        print(f"Enemy {i} in C++: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}")
 
-    # # Add enemies
-    # from cpp import Enemy  # If you expose Enemy struct type; if not, skip this line
+    # Append via struct proxy creation (depends on your API)
+    # If append requires a StructProxy, you do:
+    # Create and append a new enemy
+    new_enemy = cpp.enemies.append_new()
+    new_enemy.health = 60
+    new_enemy.x = 10.0
 
-    # # Append via struct proxy creation (depends on your API)
-    # # If append requires a StructProxy, you do:
-    # e = cpp.enemies.append_new()  # If you implemented append_new()
-    # e.health = 50
-    # e.x = 10.0
+    # Or chain the operations
+    cpp.enemies.append_new().health = 100
+    cpp.enemies[-1].x = 20.0  # Index -1 gives you the last appended enemy
 
-    # # Or if you manually push in C++ before running Python, just read them:
-    # for i in range(len(cpp.enemies)):
-    #     print(f"Enemy {i}: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}")
+    # After appending, print all enemies again
+    print("Enemies count after append in Python script:", len(cpp.enemies))
+    for i in range(len(cpp.enemies)):
+        print(
+            f"Enemy {i} after append in Python script: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}"
+        )
 
-    # # Modify struct fields
-    # if len(cpp.enemies) > 0:
-    #     cpp.enemies[0].health = 999
-    #     cpp.enemies[0].x = 123.45
+    # Modify struct fields
+    if len(cpp.enemies) > 0:
+        cpp.enemies[0].health = 999
+        cpp.enemies[0].x = 123.45
 
-    # print("Updated first enemy:", cpp.enemies[0].health, cpp.enemies[0].x)
+    print(
+        "Updated first enemy from Python script:",
+        cpp.enemies[0].health,
+        cpp.enemies[0].x,
+    )
 
+    print("\n=== 5) Vector containing vectors: grid ===")
+    print("Grid outer size in C++:", len(cpp.grid))
 
-    # print("\n=== 5) Vector containing vectors: grid ===")
-    # print("Grid outer size:", len(cpp.grid))
+    # Access nested elements
+    for i in range(len(cpp.grid)):
+        row = cpp.grid[i]
+        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])    
 
-    # # Append inner vectors
-    # row = cpp.grid.append_new_vector()  # If you implemented append_new_vector()
-    # row.append(1)
-    # row.append(2)
-    # row.append(3)
+    # Append inner vectors
+    row = cpp.grid.append_new_vector()
+    row.append(55)
+    row.append(66)
+    row.append(77)
 
-    # # Access nested elements
-    # for i in range(len(cpp.grid)):
-    #     row = cpp.grid[i]
-    #     print(f"Row {i}:", [row[j] for j in range(len(row))])
+    print("Grid outer size after append in Python script:", len(cpp.grid))
 
-    # # Modify nested element
-    # if len(cpp.grid) > 0 and len(cpp.grid[0]) > 1:
-    #     cpp.grid[0][1] = 777
+    # Access nested elements
+    for i in range(len(cpp.grid)):
+        row = cpp.grid[i]
+        print(f"Row {i} in C++:", [row[j] for j in range(len(row))])    
 
-    # print("Updated grid:")
-    # for i in range(len(cpp.grid)):
-    #     row = cpp.grid[i]
-    #     print(f"Row {i}:", [row[j] for j in range(len(row))])
+    # Modify nested element
+    if len(cpp.grid) > 0 and len(cpp.grid[0]) > 1:
+        cpp.grid[0][1] = 777
+
+    print("Updated grid in Python script at Position [0][1]:")
+    for i in range(len(cpp.grid)):
+        row = cpp.grid[i]
+        print(f"Row {i}:", [row[j] for j in range(len(row))])
