@@ -83,6 +83,45 @@ Passing a `std::vector<char>` when appending to a vector of vectors will cause t
 
 ---
 
+### Issue 18: Double-Free Risk in Root Proxy Attribute Access
+**Status:** 🟠 DEFERRED  
+**File:** `python_proxy.cpp`, lines 40-69  
+**Severity:** HIGH  
+**Problem:**
+```cpp
+case ValueType::Struct:
+    return StructProxy_New(static_cast<BoundStruct *>(val));
+
+case ValueType::Vector:
+    return VectorProxy_New(static_cast<BoundVector *>(val));
+```
+`StructProxy_New()` and `VectorProxy_New()` delete their `BoundStruct`/`BoundVector` in the proxy destructor, but here the pointers are owned by `PyInterface::g_values`. When the proxy is GC'd, it deletes the underlying bound object, leaving `g_values` with dangling pointers and causing double-free or use-after-free on subsequent access.
+
+**Impact:** Potential crash or memory corruption when the root proxy path (`create_cpp_proxy()` / `CppProxyType`) is used.
+
+**Suggested Fix:** Create wrapper copies (as in `cpp_module_getattr()`), or change the proxy to treat the bound pointer as non-owning for this code path.
+
+---
+
+### Issue 19: Type-Punning in append_new_vector() Still Causes Undefined Behavior
+**Status:** 🟠 DEFERRED  
+**File:** `python_proxy.cpp`, lines 606-689  
+**Severity:** HIGH  
+**Problem:**
+```cpp
+constexpr size_t vec_size = sizeof(std::vector<int>); // All std::vector<T> have same size
+void *temp_vec_storage = ::operator new(vec_size);
+std::vector<int> *temp_vec_ptr = new (temp_vec_storage) std::vector<int>();
+vec->append_from_cpp(temp_vec_storage);
+```
+The code constructs a `std::vector<int>` and passes it to `append_from_cpp()` for vectors of structs or vectors-of-vectors. The append functions in `data_game_traits.cpp` expect a `std::vector<StructType>` or `std::vector<std::vector<T>>`, so this still relies on type-punning and causes undefined behavior.
+
+**Impact:** Appending nested vectors of structs or vectors can still corrupt memory on some STL implementations.
+
+**Suggested Fix:** Extend `VectorInfo` with a factory for creating an empty vector of the correct concrete type (or store type-erased constructor/destructor function pointers) and pass that exact type to `append_from_cpp()`.
+
+---
+
 ## IMPORTANT ISSUES
 
 ### Issue 4: Potential Memory Leak in PyBoundString
@@ -164,6 +203,25 @@ AttributeError: Unknown C++ variable 'unknown_var' - available variables: player
 ```
 
 This significantly improves the developer experience by showing what variables ARE available, reducing trial-and-error debugging.
+
+---
+
+### Issue 20: Struct Size Calculation Ignores Nested Struct Fields
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 16-48  
+**Severity:** MEDIUM  
+**Problem:**
+```cpp
+case ValueType::Struct:
+    // Recursive struct - would need the nested StructInfo
+    field_size = 0;
+    break;
+```
+`calculate_struct_size()` returns 0 for nested struct fields, which can under-allocate memory in `VectorProxy_append_new()` when structs contain other structs.
+
+**Impact:** Appending structs with nested struct fields can lead to buffer overruns and memory corruption.
+
+**Solution:** ✅ **IMPLEMENTED** - Recursively computes nested struct sizes using `StructInfo` metadata.
 
 ---
 
@@ -305,6 +363,38 @@ print(repr(cpp.enemies))  # ❌ <cpp.VectorProxy object at 0x...>
 
 ---
 
+### Issue 21: Reference Leak When Appending to sys.path
+**Status:** 🟠 DEFERRED  
+**File:** `main.cpp`, lines 150-159  
+**Severity:** LOW  
+**Problem:**
+```cpp
+PyList_Append(path, PyUnicode_FromString(scriptsPath.string().c_str()));
+```
+`PyUnicode_FromString()` returns a new reference that is never decremented after the append.
+
+**Impact:** Minor reference leak on startup when using system Python.
+
+**Suggested Fix:** Store the `PyObject *` in a variable, check for `nullptr`, call `PyList_Append`, then `Py_DECREF` it.
+
+---
+
+### Issue 22: Missing <cstddef> Include for std::byte
+**Status:** ✅ FIXED  
+**File:** `reflection_value.hpp`  
+**Severity:** LOW  
+**Problem:**
+```cpp
+using ByteBool = std::byte;
+```
+`std::byte` is defined in `<cstddef>`, but this header is not included here. Compilation currently relies on indirect includes.
+
+**Impact:** Portability issue; may fail to compile on stricter standard library implementations.
+
+**Solution:** ✅ **IMPLEMENTED** - Added `#include <cstddef>` in `reflection_value.hpp`.
+
+---
+
 ## TESTING GAPS
 
 ### Issue 15: No Boundary Testing in controller.py
@@ -338,7 +428,7 @@ Current coverage:
 ## DOCUMENTATION ISSUES
 
 ### Issue 17: Missing Usage Documentation
-**Status:** ✅ FIXED  
+**Status:** 🟠 DEFERRED  
 **Severity:** LOW  
 **Problem:** No clear documentation about:
 1. Supported and unsupported operations
@@ -346,17 +436,7 @@ Current coverage:
 3. Memory management guarantees
 4. Thread safety (or lack thereof)
 
-**Solution:** ✅ **IMPLEMENTED** - Created comprehensive USAGE_GUIDE.md with:
-- Quick start examples
-- Complete struct/vector definition guide
-- Python API reference with code examples
-- Supported vs unsupported operations table
-- 4 real-world example scenarios
-- Performance characteristics table
-- Memory management details
-- Thread safety guidelines
-- 9-item troubleshooting guide
-Full documentation available in USAGE_GUIDE.md.
+**Status Note:** Documentation moved under doc/architecture but has not been updated and is considered incomplete.
 
 ---
 
@@ -371,9 +451,14 @@ Full documentation available in USAGE_GUIDE.md.
 | ✅ FIXED | Issue 12: NULL vs nullptr | CODE QUALITY | Low | ✓ RESOLVED |
 | ✅ FIXED | Issue 13: Struct size duplication | CODE QUALITY | Low | ✓ RESOLVED |
 | ✅ VERIFIED | Issue 14: Include guards | CODE QUALITY | Low | ✓ VERIFIED SAFE |
+| 🟠 DEFERRED | Issue 18: Root proxy double-free | CRITICAL | High | Needs fix |
+| 🟠 DEFERRED | Issue 19: append_new_vector type-punning | CRITICAL | High | Needs fix |
+| ✅ FIXED | Issue 20: Nested struct size calc | IMPORTANT | Medium | ✓ RESOLVED |
+| 🟠 DEFERRED | Issue 21: sys.path ref leak | CODE QUALITY | Low | Needs fix |
+| ✅ FIXED | Issue 22: std::byte include | CODE QUALITY | Low | ✓ RESOLVED |
 | ✅ FIXED | Issue 15: Boundary testing | TESTING | Medium | ✓ RESOLVED |
 | ✅ FIXED | Issue 16: Nested vector tests | TESTING | Medium | ✓ RESOLVED |
-| ✅ FIXED | Issue 17: Usage documentation | DOCUMENTATION | Low | ✓ RESOLVED |
+| 🟠 DEFERRED | Issue 17: Usage documentation | DOCUMENTATION | Low | Needs fix |
 | 🟠 DEFERRED | Issue 5: Error handling | ENHANCEMENT | Low | Future sprint |
 | 🟠 DEFERRED | Issue 6: Error messages | ENHANCEMENT | Low | Future sprint |
 | 🟠 DEFERRED | Issue 7: Vector slicing | FEATURE | Medium | Future sprint |
@@ -386,7 +471,7 @@ Full documentation available in USAGE_GUIDE.md.
 
 ## NEXT STEPS
 
-### ✅ COMPLETED (All Critical & Code Quality)
+### ✅ COMPLETED (Initial Critical & Code Quality)
 
 1. **Immediate Fixes:** ✅ ALL DONE
    - ✅ Issue 1 - Nested struct vectors (placement new)
@@ -399,10 +484,10 @@ Full documentation available in USAGE_GUIDE.md.
    - ✅ Issue 13 - Extract struct size helper
    - ✅ Issue 14 - Verify include structure
 
-3. **Testing & Documentation:** ✅ ALL DONE
+3. **Testing & Documentation:** ⚠️ PARTIAL
    - ✅ Issue 15 - Boundary testing (6 test cases)
    - ✅ Issue 16 - Nested modification tests (8 test cases)
-   - ✅ Issue 17 - Comprehensive usage guide
+    - 🟠 Issue 17 - Usage guide (moved, needs update)
 
 4. **Additional Features:** ✅ DONE
    - ✅ Issue 10 - __len__ for struct proxy (returns field count)
@@ -414,6 +499,9 @@ Full documentation available in USAGE_GUIDE.md.
 1. Issue 5 - Error handling in controller.py
 2. Issue 11 - String representation for debugging
 3. Issue 7 - Vector slicing support
+4. Issue 18 - Root proxy double-free
+5. Issue 19 - append_new_vector type-punning
+6. Issue 21 - sys.path ref leak
 
 **Later (Nice to Have):**
 4. Issue 6 - Enhanced error messages
@@ -422,26 +510,28 @@ Full documentation available in USAGE_GUIDE.md.
 
 ### 🎯 PROJECT STATUS
 
-**PRODUCTION READY:** ✅ YES
+**PRODUCTION READY:** ❌ NO
 
-All critical bugs fixed, code quality issues resolved, comprehensive testing in place, and full documentation available.
+New critical issues were identified (Issues 18 and 19), and documentation remains incomplete (Issue 17).
 
 ---
 
 ## SUMMARY
 
-### Status: ✅ PRODUCTION READY
+### Status: ❌ NOT PRODUCTION READY
 
 The project now has:
 - ✅ **4 critical bugs FIXED** (Issues 1, 2, 3, 4)
-- ✅ **6 code quality issues RESOLVED** (Issues 12, 13, 14, and boundary/nested testing)
+- 🟠 **2 critical issues pending** (Issues 18, 19)
+- ✅ **4 code quality issues RESOLVED** (Issues 12, 13, 14, 22)
+- ✅ **1 important issue resolved** (Issue 20)
 - ✅ **2 additional features IMPLEMENTED** (Issues 8, 10 - iterator protocol and __len__)
-- ✅ **2 documentation issues RESOLVED** (Issues 17, usage guide complete)
+- 🟠 **Documentation still incomplete** (Issue 17 pending)
 - ✅ **Comprehensive test suite** (14 new test cases in controller.py)
 - ✅ **Production-ready architecture** with sound design
 
 ### Remaining Work (Deferred)
-- 5 optional enhancement features for future sprints
+- 9 optional enhancement and bug-fix items for future sprints
 - Non-blocking, lower priority features
 - Good candidates for next development cycle
 
@@ -450,14 +540,14 @@ The project now has:
 - `CRITICAL_FIXES_APPLIED.md` - Details of 4 critical fixes
 - `CODE_QUALITY_FIXES.md` - Code quality improvements
 - `INCLUDE_DEPENDENCY_ANALYSIS.md` - Architecture verification
-- `USAGE_GUIDE.md` - Complete usage documentation
+- `doc/architecture/USAGE_GUIDE.md` - Usage documentation (needs update)
 - `TESTING_IMPROVEMENTS.md` - Testing enhancement details
 
 ### Deployment Readiness
 - **Functionality:** ✅ Complete and tested
-- **Correctness:** ✅ All critical bugs fixed
+- **Correctness:** ❌ Critical issues remain (Issues 18, 19)
 - **Code Quality:** ✅ Modern C++ practices
-- **Documentation:** ✅ Comprehensive
+- **Documentation:** ❌ Incomplete (Issue 17)
 - **Testing:** ✅ Extensive coverage
 
-**Conclusion:** Ready for production deployment.
+**Conclusion:** Not ready for production deployment until Issues 18, 19, and 17 are addressed.

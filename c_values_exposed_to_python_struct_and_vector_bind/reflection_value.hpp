@@ -1,5 +1,6 @@
 #pragma once
-#include <string> // std::string
+#include <cstddef> // std::byte
+#include <string>  // std::string
 
 enum class ValueType
 {

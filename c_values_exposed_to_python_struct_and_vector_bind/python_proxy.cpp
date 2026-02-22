@@ -33,9 +33,11 @@ static std::size_t calculate_struct_size(const StructInfo *sinfo)
         field_size = sizeof(std::string);
         break;
     case ValueType::Struct:
-        // Recursive struct - would need the nested StructInfo
-        field_size = 0;
+    {
+        const StructInfo *nested = static_cast<const StructInfo *>(last.type_meta);
+        field_size = nested ? calculate_struct_size(nested) : 0;
         break;
+    }
     case ValueType::Vector:
         field_size = sizeof(std::vector<int>); // All vectors same size
         break;
