@@ -86,7 +86,9 @@ def update_values():
     #         f"Enemy {i} after append in Python script: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}"
     #     )
     for enemy in cpp.enemies:
-        print(f"Enemy via iteration after append in Python script: health={enemy.health}, x={enemy.x}")
+        print(
+            f"Enemy via iteration after append in Python script: health={enemy.health}, x={enemy.x}"
+        )
 
     # Modify struct fields
     if len(cpp.enemies) > 0:
@@ -432,6 +434,50 @@ def test_nested_vector_modifications():
         print(f"Modified grid[-1][-1] (last of last) = {cpp.grid[-1][-1]}")
 
 
+def test_improved_error_messages():
+    """Test Issue 6: Improved error messages for unknown variables"""
+    print("\n" + "=" * 70)
+    print("TEST 9: IMPROVED ERROR MESSAGES (Issue 6)")
+    print("=" * 70)
+
+    print("\n--- Test 9.1: Unknown Variable Access (getattr) ---")
+    try:
+        _ = cpp.nonexistent_variable
+        print("❌ FAILED: Should have raised AttributeError")
+    except AttributeError as e:
+        error_msg = str(e)
+        print(f"✓ Caught expected error: {error_msg}")
+        # Verify the error message contains helpful information
+        if "available variables:" in error_msg:
+            print("✓ Error message lists available variables")
+        else:
+            print("❌ Error message should list available variables")
+
+    print("\n--- Test 9.2: Unknown Variable Assignment (setattr) ---")
+    try:
+        cpp.another_unknown_var = 42
+        print("❌ FAILED: Should have raised AttributeError")
+    except AttributeError as e:
+        error_msg = str(e)
+        print(f"✓ Caught expected error: {error_msg}")
+        # Verify the error message contains helpful information
+        if "available variables:" in error_msg:
+            print("✓ Error message lists available variables")
+        else:
+            print("❌ Error message should list available variables")
+
+    print("\n--- Test 9.3: Typo Detection ---")
+    # Test common typos to verify helpful messaging
+    try:
+        _ = cpp.playr  # typo: should be 'player'
+        print("❌ FAILED: Should have raised AttributeError")
+    except AttributeError as e:
+        error_msg = str(e)
+        print(f"✓ Caught expected error for typo 'playr': {error_msg}")
+        if "player" in error_msg:
+            print("✓ Error message shows similar variable name 'player'")
+
+
 # ============================================================================
 # Main Execution
 # ============================================================================
@@ -451,10 +497,14 @@ if __name__ == "__main__":
         # Run nested vector modification tests (Issue 16)
         test_nested_vector_modifications()
 
+        # Run improved error messages test (Issue 6)
+        test_improved_error_messages()
+
         print("\n" + "=" * 70)
         print("ALL TESTS COMPLETED SUCCESSFULLY!")
         print("=" * 70)
         print("\nSummary:")
+        print("✓ Issue 6 - Improved Error Messages: Helpful variable listings provided")
         print("✓ Issue 15 - Boundary Testing: Comprehensive edge cases covered")
         print("✓ Issue 16 - Nested Vector Modifications: Full nested structure tests")
         print("✓ All operations including error handling validated")

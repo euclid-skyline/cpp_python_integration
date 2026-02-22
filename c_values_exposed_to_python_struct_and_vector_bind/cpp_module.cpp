@@ -13,7 +13,29 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
     BoundValue *val = PyInterface::get_value_raw(attr_name);
     if (!val)
     {
-        PyErr_Format(PyExc_AttributeError, "module 'cpp' has no attribute '%s'", attr_name);
+        // Build list of available variables for better error message
+        std::string available_vars;
+        size_t count = PyInterface::g_values.size();
+        size_t i = 0;
+        for (const auto &pair : PyInterface::g_values)
+        {
+            available_vars += pair.first;
+            if (++i < count)
+                available_vars += ", ";
+        }
+
+        if (available_vars.empty())
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - no variables are currently bound",
+                         attr_name);
+        }
+        else
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - available variables: %s",
+                         attr_name, available_vars.c_str());
+        }
         return nullptr;
     }
 
@@ -27,7 +49,7 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
         BoundStruct *wrapper = new BoundStruct(bs->name, bs->instance(), bs->info());
         return StructProxy_New(wrapper);
     }
-    
+
     case ValueType::Vector:
     {
         auto *bv = static_cast<BoundVector *>(val);
@@ -35,7 +57,7 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
         BoundVector *wrapper = new BoundVector(bv->name, bv->raw_vector(), bv->info());
         return VectorProxy_New(wrapper);
     }
-    
+
     default:
     {
         // Scalar types - use PyBoundValue interface
@@ -62,7 +84,29 @@ static int cpp_module_setattr(PyObject *module, PyObject *name, PyObject *value)
     BoundValue *val = PyInterface::get_value_raw(attr_name);
     if (!val)
     {
-        PyErr_Format(PyExc_AttributeError, "module 'cpp' has no attribute '%s'", attr_name);
+        // Build list of available variables for better error message
+        std::string available_vars;
+        size_t count = PyInterface::g_values.size();
+        size_t i = 0;
+        for (const auto &pair : PyInterface::g_values)
+        {
+            available_vars += pair.first;
+            if (++i < count)
+                available_vars += ", ";
+        }
+
+        if (available_vars.empty())
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - no variables are currently bound",
+                         attr_name);
+        }
+        else
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - available variables: %s",
+                         attr_name, available_vars.c_str());
+        }
         return -1;
     }
 
@@ -96,52 +140,51 @@ static PyModuleDef cppmodule = {
     "C++ bridge module",
     -1,
     nullptr,
-    nullptr,                    // m_reload
-    nullptr,                    // m_traverse
-    nullptr,                    // m_clear
-    nullptr                     // m_free
+    nullptr, // m_reload
+    nullptr, // m_traverse
+    nullptr, // m_clear
+    nullptr  // m_free
 };
 
 // Custom module type with __getattr__ and __setattr__
 static PyTypeObject CppModuleType = {
-    PyVarObject_HEAD_INIT(nullptr, 0)
-    "cpp.module",                           // tp_name
-    0,                                      // tp_basicsize (inherited)
-    0,                                      // tp_itemsize
-    nullptr,                                // tp_dealloc
-    0,                                      // tp_vectorcall_offset
-    nullptr,                                // tp_getattr
-    nullptr,                                // tp_setattr
-    nullptr,                                // tp_as_async
-    nullptr,                                // tp_repr
-    nullptr,                                // tp_as_number
-    nullptr,                                // tp_as_sequence
-    nullptr,                                // tp_as_mapping
-    nullptr,                                // tp_hash
-    nullptr,                                // tp_call
-    nullptr,                                // tp_str
-    cpp_module_getattr,                     // tp_getattro
-    cpp_module_setattr,                     // tp_setattro
-    nullptr,                                // tp_as_buffer
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,  // tp_flags
-    "C++ extension module",                 // tp_doc
-    nullptr,                                // tp_traverse
-    nullptr,                                // tp_clear
-    nullptr,                                // tp_richcompare
-    0,                                      // tp_weaklistoffset
-    nullptr,                                // tp_iter
-    nullptr,                                // tp_iternext
-    nullptr,                                // tp_methods
-    nullptr,                                // tp_members
-    nullptr,                                // tp_getset
-    &PyModule_Type,                         // tp_base (inherit from module)
-    nullptr,                                // tp_dict
-    nullptr,                                // tp_descr_get
-    nullptr,                                // tp_descr_set
-    0,                                      // tp_dictoffset
-    nullptr,                                // tp_init
-    nullptr,                                // tp_alloc
-    nullptr                                 // tp_new
+    PyVarObject_HEAD_INIT(nullptr, 0) "cpp.module", // tp_name
+    0,                                              // tp_basicsize (inherited)
+    0,                                              // tp_itemsize
+    nullptr,                                        // tp_dealloc
+    0,                                              // tp_vectorcall_offset
+    nullptr,                                        // tp_getattr
+    nullptr,                                        // tp_setattr
+    nullptr,                                        // tp_as_async
+    nullptr,                                        // tp_repr
+    nullptr,                                        // tp_as_number
+    nullptr,                                        // tp_as_sequence
+    nullptr,                                        // tp_as_mapping
+    nullptr,                                        // tp_hash
+    nullptr,                                        // tp_call
+    nullptr,                                        // tp_str
+    cpp_module_getattr,                             // tp_getattro
+    cpp_module_setattr,                             // tp_setattro
+    nullptr,                                        // tp_as_buffer
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,       // tp_flags
+    "C++ extension module",                         // tp_doc
+    nullptr,                                        // tp_traverse
+    nullptr,                                        // tp_clear
+    nullptr,                                        // tp_richcompare
+    0,                                              // tp_weaklistoffset
+    nullptr,                                        // tp_iter
+    nullptr,                                        // tp_iternext
+    nullptr,                                        // tp_methods
+    nullptr,                                        // tp_members
+    nullptr,                                        // tp_getset
+    &PyModule_Type,                                 // tp_base (inherit from module)
+    nullptr,                                        // tp_dict
+    nullptr,                                        // tp_descr_get
+    nullptr,                                        // tp_descr_set
+    0,                                              // tp_dictoffset
+    nullptr,                                        // tp_init
+    nullptr,                                        // tp_alloc
+    nullptr                                         // tp_new
 };
 
 extern "C" PyMODINIT_FUNC PyInit_cpp(void)
