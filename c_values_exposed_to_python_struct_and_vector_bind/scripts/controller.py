@@ -61,8 +61,12 @@ def update_values():
     print("\n=== 4) Vector containing structs: enemies ===")
     print("Enemies count in C++:", len(cpp.enemies))
 
-    for i in range(len(cpp.enemies)):
-        print(f"Enemy {i} in C++: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}")
+    # This is before implementing iteration support, now we can do direct iteration over cpp.enemies
+    # for i in range(len(cpp.enemies)):
+    #     print(f"Enemy {i} in C++: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}")
+
+    for enemy in cpp.enemies:
+        print(f"Enemy via iteration: health={enemy.health}, x={enemy.x}")
 
     # Append via struct proxy creation (depends on your API)
     # If append requires a StructProxy, you do:
@@ -77,10 +81,12 @@ def update_values():
 
     # After appending, print all enemies again
     print("Enemies count after append in Python script:", len(cpp.enemies))
-    for i in range(len(cpp.enemies)):
-        print(
-            f"Enemy {i} after append in Python script: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}"
-        )
+    # for i in range(len(cpp.enemies)):
+    #     print(
+    #         f"Enemy {i} after append in Python script: health={cpp.enemies[i].health}, x={cpp.enemies[i].x}"
+    #     )
+    for enemy in cpp.enemies:
+        print(f"Enemy via iteration after append in Python script: health={enemy.health}, x={enemy.x}")
 
     # Modify struct fields
     if len(cpp.enemies) > 0:

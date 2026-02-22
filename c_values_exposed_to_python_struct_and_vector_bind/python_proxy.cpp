@@ -595,6 +595,7 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
 // ------------------------------------------------------------
 static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
 {
+    (void)args;
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
@@ -655,6 +656,7 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
 // ------------------------------------------------------------
 static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
 {
+    (void)args;
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
@@ -907,6 +909,103 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 }
 
 // ------------------------------------------------------------
+// ============================================================================
+// SECTION 3.5 — VectorProxy Iterator
+// ============================================================================
+
+// Iterator object for VectorProxy
+typedef struct
+{
+    PyObject_HEAD PyObject *vector; // Reference to the VectorProxy object
+    std::size_t index;              // Current iteration index
+} VectorIteratorObject;
+
+// Iterator destructor
+static void VectorIterator_dealloc(PyObject *self)
+{
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    Py_XDECREF(it->vector);
+    PyObject_Del(self);
+}
+
+// __iter__ on iterator returns itself
+static PyObject *VectorIterator_iter(PyObject *self)
+{
+    Py_INCREF(self);
+    return self;
+}
+
+// __next__ implementation
+static PyObject *VectorIterator_next(PyObject *self)
+{
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    VectorProxyObject *proxy = (VectorProxyObject *)it->vector;
+
+    // Check if we've reached the end
+    if (it->index >= proxy->bound->size())
+    {
+        PyErr_SetNone(PyExc_StopIteration);
+        return nullptr;
+    }
+
+    // Get the element at current index
+    PyObject *item = VectorProxy_getitem((PyObject *)proxy, (Py_ssize_t)it->index);
+
+    if (item)
+        it->index++; // Increment only on success
+
+    return item;
+}
+
+// VectorIterator type definition
+static PyTypeObject VectorIteratorType = {
+    PyVarObject_HEAD_INIT(nullptr, 0) "cpp.VectorIterator", // tp_name
+    sizeof(VectorIteratorObject),                           // tp_basicsize
+    0,                                                      // tp_itemsize
+    VectorIterator_dealloc,                                 // tp_dealloc
+    0,                                                      // tp_vectorcall_offset
+    0,                                                      // tp_getattr
+    0,                                                      // tp_setattr
+    0,                                                      // tp_as_async
+    0,                                                      // tp_repr
+    0,                                                      // tp_as_number
+    0,                                                      // tp_as_sequence
+    0,                                                      // tp_as_mapping
+    0,                                                      // tp_hash
+    0,                                                      // tp_call
+    0,                                                      // tp_str
+    0,                                                      // tp_getattro
+    0,                                                      // tp_setattro
+    0,                                                      // tp_as_buffer
+    Py_TPFLAGS_DEFAULT,                                     // tp_flags
+    "Iterator for C++ vector",                              // tp_doc
+    0,                                                      // tp_traverse
+    0,                                                      // tp_clear
+    0,                                                      // tp_richcompare
+    0,                                                      // tp_weaklistoffset
+    VectorIterator_iter,                                    // tp_iter
+    VectorIterator_next,                                    // tp_iternext
+    0,                                                      // tp_methods
+};
+
+// VectorProxy __iter__ implementation
+static PyObject *VectorProxy_iter(PyObject *self)
+{
+    VectorIteratorObject *it = PyObject_New(VectorIteratorObject, &VectorIteratorType);
+    if (!it)
+        return nullptr;
+
+    Py_INCREF(self); // Hold reference to vector
+    it->vector = self;
+    it->index = 0;
+
+    return (PyObject *)it;
+}
+
+// ============================================================================
+// SECTION 3.4 — VectorProxy Methods
+// ============================================================================
+
 // VectorProxy methods table
 // ------------------------------------------------------------
 static PyMethodDef VectorProxy_methods[] = {
@@ -960,7 +1059,7 @@ PyTypeObject VectorProxyType = {
     0,                                                   // tp_clear
     0,                                                   // tp_richcompare
     0,                                                   // tp_weaklistoffset
-    0,                                                   // tp_iter
+    VectorProxy_iter,                                    // tp_iter (NEW!)
     0,                                                   // tp_iternext
     VectorProxy_methods,                                 // tp_methods
 };

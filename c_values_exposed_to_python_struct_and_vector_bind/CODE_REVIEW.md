@@ -170,26 +170,36 @@ scores = cpp.scores[1:3]  # ❌ Fails
 ---
 
 ### Issue 8: No Support for Vector Iteration
-**Status:** ℹ️  DEFERRED  
+**Status:** ✅ FIXED  
 **File:** `python_proxy.cpp`  
 **Severity:** MEDIUM  
 **Problem:** VectorProxy doesn't implement `tp_iter`, so users cannot use standard Python loops:
 
-**Currently doesn't work:**
+**Previously didn't work:**
 ```python
 for enemy in cpp.enemies:  # ❌ TypeError
     print(enemy.health)
 ```
 
-**Workaround:**
+**Solution:** ✅ **IMPLEMENTED** - Created complete iterator protocol:
+1. `VectorIteratorType` - New PyTypeObject for iterator (lines 913-952)
+2. `VectorIterator_next()` - Implements `__next__()` to return next element (lines 936-950)
+3. `VectorProxy_iter()` - Implements `__iter__()` to create iterator (lines 954-965)
+4. Updated VectorProxyType to use `VectorProxy_iter` (line 1021)
+
+**Now works correctly:**
 ```python
-for i in range(len(cpp.enemies)):  # ✓ Current way
-    print(cpp.enemies[i].health)
+for enemy in cpp.enemies:
+    print(enemy.health)  # ✅ Iterates through all enemies
 ```
 
-**Solution:** Implement iterator protocol in `python_proxy.cpp` (future enhancement)
-
-**Note:** Workaround exists using index-based loop; prioritized below slicing
+Supports all standard iteration patterns:
+```python
+for item in cpp.vector:              # ✓ Basic iteration
+for i, item in enumerate(cpp.vector): # ✓ With enumerate()
+list(cpp.vector)                      # ✓ Convert to list
+[x for x in cpp.vector]               # ✓ List comprehensions
+```
 
 ---
 
@@ -352,7 +362,7 @@ Full documentation available in USAGE_GUIDE.md.
 | 🟠 DEFERRED | Issue 5: Error handling | ENHANCEMENT | Low | Future sprint |
 | 🟠 DEFERRED | Issue 6: Error messages | ENHANCEMENT | Low | Future sprint |
 | 🟠 DEFERRED | Issue 7: Vector slicing | FEATURE | Medium | Future sprint |
-| 🟠 DEFERRED | Issue 8: Iterator protocol | FEATURE | Medium | Future sprint |
+| ✅ FIXED | Issue 8: Iterator protocol | FEATURE | Medium | ✓ RESOLVED |
 | 🟠 DEFERRED | Issue 9: __index__ protocol | FEATURE | Low | Future sprint |
 | ✅ FIXED | Issue 10: __len__ for struct | FEATURE | Low | ✓ RESOLVED |
 | 🟠 DEFERRED | Issue 11: String repr/str | FEATURE | Low | Future sprint |
@@ -381,19 +391,19 @@ Full documentation available in USAGE_GUIDE.md.
 
 4. **Additional Features:** ✅ DONE
    - ✅ Issue 10 - __len__ for struct proxy (returns field count)
+   - ✅ Issue 8 - Iterator protocol (for x in cpp.vector loops)
 
 ### 🟠 DEFERRED (Optional Enhancements)
 
 **Next Sprint (when needed):**
 1. Issue 5 - Error handling in controller.py
-2. Issue 8 - Iterator protocol for `for x in vec:` loops
-3. Issue 11 - String representation for debugging
-4. Issue 7 - Vector slicing support
+2. Issue 11 - String representation for debugging
+3. Issue 7 - Vector slicing support
 
 **Later (Nice to Have):**
-5. Issue 6 - Enhanced error messages
-6. Issue 9 - __index__ protocol support
-7. Issue 11 - String repr/str for proxies
+4. Issue 6 - Enhanced error messages
+5. Issue 9 - __index__ protocol support
+6. Issue 11 - String repr/str for proxies
 
 ### 🎯 PROJECT STATUS
 
@@ -410,13 +420,13 @@ All critical bugs fixed, code quality issues resolved, comprehensive testing in 
 The project now has:
 - ✅ **4 critical bugs FIXED** (Issues 1, 2, 3, 4)
 - ✅ **6 code quality issues RESOLVED** (Issues 12, 13, 14, and boundary/nested testing)
-- ✅ **1 additional feature IMPLEMENTED** (Issue 10 - __len__ for structs)
+- ✅ **2 additional features IMPLEMENTED** (Issues 8, 10 - iterator protocol and __len__)
 - ✅ **2 documentation issues RESOLVED** (Issues 17, usage guide complete)
 - ✅ **Comprehensive test suite** (14 new test cases in controller.py)
 - ✅ **Production-ready architecture** with sound design
 
 ### Remaining Work (Deferred)
-- 6 optional enhancement features for future sprints
+- 5 optional enhancement features for future sprints
 - Non-blocking, lower priority features
 - Good candidates for next development cycle
 
