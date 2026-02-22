@@ -682,116 +682,53 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
         return nullptr;
     }
 
-    // For now, we need to create a temporary vector of the correct type
-    // This is tricky because we don't have a generic constructor
-    // We use the append function indirectly by creating the vector through append
-
-    switch (inner_info->element_type)
+    if (inner_info->create_empty_vec_fn && inner_info->destroy_vec_fn)
     {
-    case ValueType::Int:
-    {
-        std::vector<int> new_inner_vec;
-        vec->append_from_cpp(&new_inner_vec);
-        break;
+        void *temp_vec = inner_info->create_empty_vec_fn();
+        if (!temp_vec)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create inner vector");
+            return nullptr;
+        }
+        vec->append_from_cpp(temp_vec);
+        inner_info->destroy_vec_fn(temp_vec);
     }
-
-    case ValueType::Float:
+    else
     {
-        std::vector<float> new_inner_vec;
-        vec->append_from_cpp(&new_inner_vec);
-        break;
-    }
+        switch (inner_info->element_type)
+        {
+        case ValueType::Int:
+        {
+            std::vector<int> new_inner_vec;
+            vec->append_from_cpp(&new_inner_vec);
+            break;
+        }
 
-    case ValueType::Bool:
-    {
-        std::vector<ByteBool> new_inner_vec;
-        vec->append_from_cpp(&new_inner_vec);
-        break;
-    }
+        case ValueType::Float:
+        {
+            std::vector<float> new_inner_vec;
+            vec->append_from_cpp(&new_inner_vec);
+            break;
+        }
 
-    case ValueType::String:
-    {
-        std::vector<std::string> new_inner_vec;
-        vec->append_from_cpp(&new_inner_vec);
-        break;
-    }
+        case ValueType::Bool:
+        {
+            std::vector<ByteBool> new_inner_vec;
+            vec->append_from_cpp(&new_inner_vec);
+            break;
+        }
 
-    case ValueType::Struct:
-    {
-        // For vectors of structs (e.g., std::vector<Enemy>)
-        // We need to create an empty vector and append it
-        // Since we can't directly instantiate std::vector<Enemy> without knowing the exact type,
-        // we use the raw vector polymorphically through its append function.
+        case ValueType::String:
+        {
+            std::vector<std::string> new_inner_vec;
+            vec->append_from_cpp(&new_inner_vec);
+            break;
+        }
 
-        // The parent vector's append function expects a std::vector<StructType>*
-        // We'll rely on the VectorInfo's append_fn which should handle this
-
-        // WORKAROUND: Since we can't create std::vector<Enemy> without templates,
-        // we'll create a temporary storage and rely on placement new or direct construction
-        // However, the safest approach is to use the raw pointer returned by element_ptr
-        // after appending through the C++ API directly.
-
-        // Better approach: DON'T create temp vector here.
-        // Instead, check if there's a helper function in data_game_traits
-        // Or accept that this feature requires the caller to know the struct type.
-
-        // TEMPORARY FIX: Actually work with what we have
-        // Since append_fn expects void* to std::vector<T>, and we need std::vector<Enemy>,
-        // we rely on the fact that the append operation will be handled by data_game_traits.cpp
-        // which knows the concrete type.
-
-        // The issue is: we must pass a REAL std::vector<Enemy>, not std::vector<char>
-        // This is fundamentally a type erasure problem.
-
-        // SOLUTION: Since the VectorInfo stores the concrete vector type operations,
-        // we need to actually invoke a constructor for that type.
-        // For Enemy, this would be std::vector<Enemy>.
-
-        // The cleanest fix: Store a factory function in VectorInfo that creates empty vectors
-        // For now, we'll use a hacky but working solution:
-        // Allocate memory for std::vector<T> where T is the struct, initialize it, append, then clean up
-
-        // Allocate space for std::vector<Enemy> (all std::vectors have same size)
-        constexpr size_t vec_size = sizeof(std::vector<int>); // All std::vector<T> have same size
-        void *temp_vec_storage = ::operator new(vec_size);
-
-        // Placement new to construct an empty std::vector at that location
-        // We use int as placeholder since all vectors have same layout
-        std::vector<int> *temp_vec_ptr = new (temp_vec_storage) std::vector<int>();
-
-        // Append through the function pointer (it will copy the vector structure)
-        vec->append_from_cpp(temp_vec_storage);
-
-        // Destroy the temporary vector
-        temp_vec_ptr->~vector();
-        ::operator delete(temp_vec_storage);
-
-        break;
-    }
-
-    case ValueType::Vector:
-    {
-        // Deeply nested vectors (e.g., std::vector<std::vector<int>>)
-        // Same approach as structs
-        constexpr size_t vec_size = sizeof(std::vector<int>);
-        void *temp_vec_storage = ::operator new(vec_size);
-
-        // Construct empty vector
-        std::vector<int> *temp_vec_ptr = new (temp_vec_storage) std::vector<int>();
-
-        // Append
-        vec->append_from_cpp(temp_vec_storage);
-
-        // Clean up
-        temp_vec_ptr->~vector();
-        ::operator delete(temp_vec_storage);
-
-        break;
-    }
-
-    default:
-        PyErr_SetString(PyExc_TypeError, "Unsupported inner vector element type");
-        return nullptr;
+        default:
+            PyErr_SetString(PyExc_TypeError, "Unsupported inner vector element type");
+            return nullptr;
+        }
     }
 
     // Get the last element (the one we just added)

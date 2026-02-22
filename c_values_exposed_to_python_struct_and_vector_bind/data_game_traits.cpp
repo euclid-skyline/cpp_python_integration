@@ -23,6 +23,16 @@ bool int_vec_append(void *ptr, void *val)
     return true;
 }
 
+void *int_vec_create_empty()
+{
+    return new std::vector<int>();
+}
+
+void int_vec_destroy(void *ptr)
+{
+    delete static_cast<std::vector<int> *>(ptr);
+}
+
 // Function pointer implementations for std::vector<Enemy>
 std::size_t enemy_vec_size(void *ptr)
 {
@@ -38,6 +48,16 @@ bool enemy_vec_append(void *ptr, void *val)
 {
     reinterpret_cast<std::vector<Enemy> *>(ptr)->push_back(*static_cast<Enemy *>(val));
     return true;
+}
+
+void *enemy_vec_create_empty()
+{
+    return new std::vector<Enemy>();
+}
+
+void enemy_vec_destroy(void *ptr)
+{
+    delete static_cast<std::vector<Enemy> *>(ptr);
 }
 
 // Function pointer implementations for std::vector<std::vector<int>>
@@ -57,6 +77,16 @@ bool grid_vec_append(void *ptr, void *val)
         *static_cast<std::vector<int> *>(val));
     return true;
 }
+
+void *grid_vec_create_empty()
+{
+    return new std::vector<std::vector<int>>();
+}
+
+void grid_vec_destroy(void *ptr)
+{
+    delete static_cast<std::vector<std::vector<int>> *>(ptr);
+}
 // Function pointer implementations for std::vector<std::vector<Enemy>>
 std::size_t enemy_waves_vec_size(void *ptr)
 {
@@ -73,4 +103,14 @@ bool enemy_waves_vec_append(void *ptr, void *val)
     reinterpret_cast<std::vector<std::vector<Enemy>> *>(ptr)->push_back(
         *static_cast<std::vector<Enemy> *>(val));
     return true;
+}
+
+void *enemy_waves_vec_create_empty()
+{
+    return new std::vector<std::vector<Enemy>>();
+}
+
+void enemy_waves_vec_destroy(void *ptr)
+{
+    delete static_cast<std::vector<std::vector<Enemy>> *>(ptr);
 }

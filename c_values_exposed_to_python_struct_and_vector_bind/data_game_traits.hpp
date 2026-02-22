@@ -9,18 +9,26 @@
 std::size_t int_vec_size(void *ptr);
 void *int_vec_element_ptr(void *ptr, std::size_t idx);
 bool int_vec_append(void *ptr, void *val);
+void *int_vec_create_empty();
+void int_vec_destroy(void *ptr);
 
 std::size_t enemy_vec_size(void *ptr);
 void *enemy_vec_element_ptr(void *ptr, std::size_t idx);
 bool enemy_vec_append(void *ptr, void *val);
+void *enemy_vec_create_empty();
+void enemy_vec_destroy(void *ptr);
 
 std::size_t grid_vec_size(void *ptr);
 void *grid_vec_element_ptr(void *ptr, std::size_t idx);
 bool grid_vec_append(void *ptr, void *val);
+void *grid_vec_create_empty();
+void grid_vec_destroy(void *ptr);
 
 std::size_t enemy_waves_vec_size(void *ptr);
 void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx);
 bool enemy_waves_vec_append(void *ptr, void *val);
+void *enemy_waves_vec_create_empty();
+void enemy_waves_vec_destroy(void *ptr);
 
 // 1. Simple struct
 struct Player
@@ -55,7 +63,9 @@ static VectorInfo IntVectorInfo = {
     nullptr,
     int_vec_size,
     int_vec_element_ptr,
-    int_vec_append};
+    int_vec_append,
+    int_vec_create_empty,
+    int_vec_destroy};
 // Specialize the trait to mark std::vector<int> as a reflected vector
 template <>
 inline const VectorInfo *get_vector_info<int>()
@@ -113,7 +123,9 @@ static VectorInfo EnemyVectorInfo = {
     &EnemyInfo,
     enemy_vec_size,
     enemy_vec_element_ptr,
-    enemy_vec_append};
+    enemy_vec_append,
+    enemy_vec_create_empty,
+    enemy_vec_destroy};
 // Specialize the trait to mark std::vector<Enemy> as a reflected vector
 template <>
 struct is_reflected_struct<Enemy> : std::true_type
@@ -144,7 +156,9 @@ static VectorInfo VectorOfIntVectorInfo = {
     &IntVectorInfo,
     grid_vec_size,
     grid_vec_element_ptr,
-    grid_vec_append};
+    grid_vec_append,
+    grid_vec_create_empty,
+    grid_vec_destroy};
 
 // Specialize get_vector_info for the element type of grid's outer vector
 // grid is std::vector<std::vector<int>>, so its element type is std::vector<int>
@@ -162,7 +176,9 @@ static VectorInfo VectorOfEnemyVectorInfo = {
     &EnemyVectorInfo,
     enemy_waves_vec_size,
     enemy_waves_vec_element_ptr,
-    enemy_waves_vec_append};
+    enemy_waves_vec_append,
+    enemy_waves_vec_create_empty,
+    enemy_waves_vec_destroy};
 
 // Specialize get_vector_info for the element type of enemy_waves's outer vector
 // enemy_waves is std::vector<std::vector<Enemy>>, so its element type is std::vector<Enemy>

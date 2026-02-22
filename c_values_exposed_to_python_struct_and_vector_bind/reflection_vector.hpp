@@ -1,10 +1,9 @@
 #pragma once
-#include <vector>                // std::vector
-#include <string>                // std::string
+#include <vector> // std::vector
+#include <string> // std::string
 
 #include "reflection_value.hpp"  // BoundValue, ValueType
 #include "reflection_struct.hpp" // BoundStruct, StructInfo
-
 
 // ---------------------------------------------------------
 // BoundVector
@@ -15,11 +14,13 @@ struct VectorInfo
 {
     ValueType element_type; // Int, Float, Bool, String, Struct, ...
     void *element_meta;     // e.g. StructInfo* if element_type == Struct or VectorInfo* if element_type == Vector (for nested vectors)
-    
+
     // Function pointers for type-erased operations
     std::size_t (*size_fn)(void *vec_ptr);
     void *(*element_ptr_fn)(void *vec_ptr, std::size_t index);
     bool (*append_fn)(void *vec_ptr, void *value_ptr);
+    void *(*create_empty_vec_fn)();
+    void (*destroy_vec_fn)(void *vec_ptr);
 };
 // Note: For simplicity, we assume all vectors are std::vector<T> and we only store a void* to it.
 // The VectorInfo tells us how to interpret the elements.
@@ -57,7 +58,6 @@ public:
     }
 
 private:
-
     void *m_vec_ptr;          // pointer to std::vector<T>
     const VectorInfo *m_info; // element type metadata
 };
