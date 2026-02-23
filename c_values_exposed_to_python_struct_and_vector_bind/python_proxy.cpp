@@ -97,7 +97,12 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
         // Create a wrapper that the proxy can own and delete safely
         // This prevents double-free: g_values owns original, proxy owns wrapper
         BoundStruct *wrapper = new BoundStruct(bs->name, bs->instance(), bs->info());
-        return StructProxy_New(wrapper);
+        PyObject *result = StructProxy_New(wrapper);
+        if (!result)
+        {
+            delete wrapper;
+        }
+        return result;
     }
 
     case ValueType::Vector:
@@ -106,7 +111,12 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
         // Create a wrapper that the proxy can own and delete safely
         // This prevents double-free: g_values owns original, proxy owns wrapper
         BoundVector *wrapper = new BoundVector(bv->name, bv->raw_vector(), bv->info());
-        return VectorProxy_New(wrapper);
+        PyObject *result = VectorProxy_New(wrapper);
+        if (!result)
+        {
+            delete wrapper;
+        }
+        return result;
     }
 
     default:
@@ -210,6 +220,12 @@ PyObject *create_cpp_proxy()
 
     g_cpp_proxy_instance =
         reinterpret_cast<PyObject *>(PyObject_New(CppProxyObject, &CppProxyType));
+
+    if (!g_cpp_proxy_instance)
+    {
+        PyErr_NoMemory();
+        return nullptr;
+    }
 
     return g_cpp_proxy_instance;
 }

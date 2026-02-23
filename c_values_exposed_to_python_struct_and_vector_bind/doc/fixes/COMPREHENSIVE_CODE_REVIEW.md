@@ -67,118 +67,6 @@ if (PyType_Ready(&VectorIteratorType) < 0)
 
 ---
 
-### Issue 30: Python Reference Counting Confusion in cppproxy_getattro
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp`, lines 97-100  
-**Severity:** LOW  
-**Category:** Python C-API / Code Clarity
-
-**Problem:**
-The error message when dynamic_cast fails is misleading. The current code doesn't clearly explain what happened:
-
-```cpp
-PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
-if (!pyval)
-{
-    PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
-    return nullptr;  // Message doesn't explain the actual issue
-}
-return pyval->to_python();
-```
-
-When `dynamic_cast` fails, it means a non-scalar type was incorrectly routed to this branch, not that "it's not PyBoundValue." The message creates confusion during debugging.
-
-**Root Cause:** Misleading error message that doesn't correlate with the actual problem.
-
-**Impact:** Difficult to diagnose bugs when this error path is triggered.
-
-**Recommended Fix:**
-```cpp
-PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
-if (!pyval)
-{
-    // This shouldn't happen if val->type is scalar (Int, Float, Bool, String)
-    PyErr_Format(PyExc_RuntimeError, 
-                 "Internal error: scalar type '%d' is not mapped to PyBoundValue", 
-                 static_cast<int>(val->type));
-    return nullptr;
-}
-return pyval->to_python();  // Returns new reference (correct)
-```
-
----
-
-### Issue 49: Inconsistent Error Messaging Between Root Proxy Paths
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp` lines 85-87, `cpp_module.cpp` lines 38-40  
-**Severity:** HIGH  
-**Category:** User Experience / Error Handling Inconsistency
-
-**Problem:**
-The root proxy (`cppproxy_getattro`) and module proxy (`cpp_module_getattr`) handle unknown attributes differently. The root proxy provides no helpful error message, while the module proxy lists available variables.
-
-```cpp
-// python_proxy.cpp cppproxy_getattro() (ROOT PROXY PATH):
-if (!val)
-{
-    PyErr_Format(PyExc_AttributeError, "Unknown C++ variable '%s'", name);
-    return nullptr;  // ❌ No list of available variables!
-}
-
-// cpp_module.cpp cpp_module_getattr() (MODULE PATH):
-if (!val)
-{
-    // ✅ Builds helpful error message with available variables
-    std::string available_vars;
-    for (const auto &pair : PyInterface::g_values) {
-        available_vars += pair.first;
-        if (++i < count)
-            available_vars += ", ";
-    }
-    PyErr_Format(PyExc_AttributeError,
-                 "Unknown C++ variable '%s' - available variables: %s",
-                 attr_name, available_vars.c_str());
-}
-```
-
-**Root Cause:** Two different code paths for accessing the same variables with inconsistent error handling.
-
-**Impact:** Poor developer experience when using root proxy path - users get unhelpful error messages.
-
-**Recommended Fix:**
-```cpp
-// In python_proxy.cpp, cppproxy_getattro():
-if (!val)
-{
-    // Build list of available variables for better error message
-    std::string available_vars;
-    size_t count = PyInterface::g_values.size();
-    size_t i = 0;
-    for (const auto &pair : PyInterface::g_values)
-    {
-        available_vars += pair.first;
-        if (++i < count)
-            available_vars += ", ";
-    }
-
-    if (available_vars.empty())
-    {
-        PyErr_Format(PyExc_AttributeError,
-                     "Unknown C++ variable '%s' - no variables are currently bound",
-                     name);
-    }
-    else
-    {
-        PyErr_Format(PyExc_AttributeError,
-                     "Unknown C++ variable '%s' - available variables: %s",
-                     name, available_vars.c_str());
-    }
-    return nullptr;
-}
-```
-
----
-
 ### Issue 31: Missing Null Check on create_cpp_proxy Return Value
 **Status:** ⚠️ UNDER REVIEW  
 **File:** `python_proxy.cpp`, lines 210-214  
@@ -284,6 +172,77 @@ case ValueType::Vector:
 ---
 
 ## HIGH-PRIORITY ISSUES
+
+### Issue 49: Inconsistent Error Messaging Between Root Proxy Paths
+**Status:** ⚠️ UNDER REVIEW  
+**File:** `python_proxy.cpp` lines 85-87, `cpp_module.cpp` lines 38-40  
+**Severity:** HIGH  
+**Category:** User Experience / Error Handling Inconsistency
+
+**Problem:**
+The root proxy (`cppproxy_getattro`) and module proxy (`cpp_module_getattr`) handle unknown attributes differently. The root proxy provides no helpful error message, while the module proxy lists available variables.
+
+```cpp
+// python_proxy.cpp cppproxy_getattro() (ROOT PROXY PATH):
+if (!val)
+{
+    PyErr_Format(PyExc_AttributeError, "Unknown C++ variable '%s'", name);
+    return nullptr;  // ❌ No list of available variables!
+}
+
+// cpp_module.cpp cpp_module_getattr() (MODULE PATH):
+if (!val)
+{
+    // ✅ Builds helpful error message with available variables
+    std::string available_vars;
+    for (const auto &pair : PyInterface::g_values) {
+        available_vars += pair.first;
+        if (++i < count)
+            available_vars += ", ";
+    }
+    PyErr_Format(PyExc_AttributeError,
+                 "Unknown C++ variable '%s' - available variables: %s",
+                 attr_name, available_vars.c_str());
+}
+```
+
+**Root Cause:** Two different code paths for accessing the same variables with inconsistent error handling.
+
+**Impact:** Poor developer experience when using root proxy path - users get unhelpful error messages.
+
+**Recommended Fix:**
+```cpp
+// In python_proxy.cpp, cppproxy_getattro():
+if (!val)
+{
+    // Build list of available variables for better error message
+    std::string available_vars;
+    size_t count = PyInterface::g_values.size();
+    size_t i = 0;
+    for (const auto &pair : PyInterface::g_values)
+    {
+        available_vars += pair.first;
+        if (++i < count)
+            available_vars += ", ";
+    }
+
+    if (available_vars.empty())
+    {
+        PyErr_Format(PyExc_AttributeError,
+                     "Unknown C++ variable '%s' - no variables are currently bound",
+                     name);
+    }
+    else
+    {
+        PyErr_Format(PyExc_AttributeError,
+                     "Unknown C++ variable '%s' - available variables: %s",
+                     name, available_vars.c_str());
+    }
+    return nullptr;
+}
+```
+
+---
 
 ### Issue 33: Missing Null Check for proxy->bound
 **Status:** ⚠️ UNDER REVIEW  
@@ -689,6 +648,47 @@ void *element_ptr(std::size_t index) const
 
 ## LOW-PRIORITY ISSUES
 
+### Issue 30: Python Reference Counting Confusion in cppproxy_getattro
+**Status:** ⚠️ UNDER REVIEW  
+**File:** `python_proxy.cpp`, lines 97-100  
+**Severity:** LOW  
+**Category:** Python C-API / Code Clarity
+
+**Problem:**
+The error message when dynamic_cast fails is misleading. The current code doesn't clearly explain what happened:
+
+```cpp
+PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
+if (!pyval)
+{
+    PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
+    return nullptr;  // Message doesn't explain the actual issue
+}
+return pyval->to_python();
+```
+
+When `dynamic_cast` fails, it means a non-scalar type was incorrectly routed to this branch, not that "it's not PyBoundValue." The message creates confusion during debugging.
+
+**Root Cause:** Misleading error message that doesn't correlate with the actual problem.
+
+**Impact:** Difficult to diagnose bugs when this error path is triggered.
+
+**Recommended Fix:**
+```cpp
+PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
+if (!pyval)
+{
+    // This shouldn't happen if val->type is scalar (Int, Float, Bool, String)
+    PyErr_Format(PyExc_RuntimeError, 
+                 "Internal error: scalar type '%d' is not mapped to PyBoundValue", 
+                 static_cast<int>(val->type));
+    return nullptr;
+}
+return pyval->to_python();  // Returns new reference (correct)
+```
+
+---
+
 ### Issue 42: Uninformative Error Messages
 **Status:** ⚠️ UNDER REVIEW  
 **File:** `python_proxy.cpp`, line 204  
@@ -869,16 +869,17 @@ std::vector<std::vector<Enemy>> enemy_waves = {};
 
 ## SUMMARY
 
-**Total New Issues:** 19 (Issues 29-47)
+**Total New Issues:** 21 (Issues 29-49)
 
 **Distribution by Severity:**
 
 | Severity | Count | Issues |
 |----------|-------|--------|
-| CRITICAL | 5 | 29, 30, 31, 32, 46 |
-| HIGH | 6 | 33, 34, 35, 36, 37, 47 |
-| MEDIUM | 5 | 38, 39, 40, 41 |
-| LOW | 3 | 42, 43, 44, 45 |
+| CRITICAL | 3 | 31, 32, 46 |
+| HIGH | 7 | 33, 34, 35, 36, 37, 47, 49 |
+| MEDIUM | 4 | 38, 39, 40, 41 |
+| LOW | 5 | 30, 42, 43, 44, 45 |
+| **FIXED** | **2** | **29, 48** |
 
 **Additional Critical Issues Found:**
 
@@ -1101,8 +1102,8 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | CRITICAL | 3 | 31, 32, 46 |
 | HIGH | 7 | 33, 34, 35, 36, 37, 47, 49 |
-| MEDIUM | 5 | 38, 39, 40, 41, 44 |
-| LOW | 4 | 30, 42, 43, 45 |
+| MEDIUM | 4 | 38, 39, 40, 41 |
+| LOW | 5 | 30, 42, 43, 44, 45 |
 | **FIXED** | **2** | **29, 48** |
 
 **Distribution by Category:**
@@ -1111,7 +1112,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | Type Initialization | 1 | 29 ✅ |
 | Memory Management | 1 | 48 ✅ |
-| Error Messaging | 2 | 30, 49 |
+| Error Messaging / UX | 3 | 30, 42, 49 |
 | Null Safety | 4 | 31, 33, 36, 46 |
 | Resource Leak | 3 | 32, 35, 37 |
 | Thread Safety | 1 | 34 |
@@ -1119,8 +1120,9 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Type Safety | 1 | 38 |
 | Robustness | 1 | 40 |
 | Defensive Programming | 1 | 41 |
-| Documentation | 3 | 39, 42, 44 |
-| Code Style | 1 | 43 |
+| Python C-API Semantics | 1 | 39 |
+| Documentation / Maintainability | 1 | 44 |
+| Code Style / Clarity | 1 | 43 |
 | Best Practices | 1 | 45 |
 
 ---
@@ -1154,13 +1156,15 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 ## Cross-Reference with Original Issues
 
 The following new issues relate to previously identified and fixed issues in CODE_REVIEW.md:
-- **Issue 29** - New issue, not covered by previous fixes
-- **Issue 30** - Relates to Issue 6 (error message improvements) but for root proxy path
+- **Issue 29** - New issue, not covered by previous fixes (now fixed)
+- **Issue 30** - Relates to Issue 6 (error message improvements) but for scalar-path clarity
 - **Issue 31** - New null safety issue
 - **Issue 32** - Relates to Issue 18 (double-free risk) - similar memory management concern
 - **Issue 46** - New null safety issue specific to append operations
 - **Issue 47** - New error handling gap
+- **Issue 48** - Extends Issue 26 (Option B dynamic element resolution) with lifetime safety
+- **Issue 49** - Relates to Issue 6 (error message improvements) for root vs module proxy parity
 
-**Recommendation:** Review Issues 1-28 to verify these new issues aren't already addressed by applied fixes.
+**Review Result (Issues 1-28):** Verified on February 23, 2026. Overlaps found: Issue 30 and Issue 49 align with Issue 6 (error message improvements); Issue 36 is partially covered by Issue 23 for proxy accessors but still requires a full audit outside those call sites; Issue 35 mirrors the Issue 32 pattern but in StructProxy_getattro. All other Issues 31, 32, 33, 37, 38, 40, 41, 42, 43, 44, 45, 46, and 47 are not addressed by Issues 1-28.
 
 ---
