@@ -222,6 +222,7 @@ PyObject *create_cpp_proxy()
 typedef struct
 {
     PyObject_HEAD BoundStruct *bound;
+    PyObject *parent_proxy; // Reference to parent VectorProxy (if from vector element)
 } StructProxyObject;
 
 // ------------------------------------------------------------
@@ -233,6 +234,9 @@ static void StructProxy_dealloc(PyObject *self)
 
     // Delete the BoundStruct wrapper
     delete proxy->bound;
+
+    // Decrement parent reference if exists
+    Py_XDECREF(proxy->parent_proxy);
 
     // Free the Python object
     PyObject_Del(self);
@@ -443,7 +447,7 @@ PyTypeObject StructProxyType = {
 // ------------------------------------------------------------
 // Create a new StructProxy instance
 // ------------------------------------------------------------
-PyObject *StructProxy_New(BoundStruct *bound)
+PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent)
 {
     StructProxyObject *obj =
         PyObject_New(StructProxyObject, &StructProxyType);
@@ -455,6 +459,8 @@ PyObject *StructProxy_New(BoundStruct *bound)
     }
 
     obj->bound = bound;
+    obj->parent_proxy = parent;
+    Py_XINCREF(parent); // Increment parent reference count if not nullptr
     return (PyObject *)obj;
 }
 
@@ -465,6 +471,7 @@ PyObject *StructProxy_New(BoundStruct *bound)
 typedef struct
 {
     PyObject_HEAD BoundVector *bound;
+    PyObject *parent_proxy; // Reference to parent VectorProxy (if nested vector)
 } VectorProxyObject;
 
 // ------------------------------------------------------------
@@ -476,6 +483,9 @@ static void VectorProxy_dealloc(PyObject *self)
 
     // Delete the BoundVector wrapper
     delete proxy->bound;
+
+    // Decrement parent reference if exists
+    Py_XDECREF(proxy->parent_proxy);
 
     // Free the Python object
     PyObject_Del(self);
@@ -539,7 +549,7 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
             proxy->bound,                    // Parent vector
             static_cast<std::size_t>(index), // Element index
             sinfo);
-        return StructProxy_New(bstruct);
+        return StructProxy_New(bstruct, self); // Pass parent to keep it alive
     }
 
     case ValueType::Vector:
@@ -551,7 +561,7 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
             proxy->bound,                    // Parent vector
             static_cast<std::size_t>(index), // Element index
             vinfo);
-        return VectorProxy_New(bvec);
+        return VectorProxy_New(bvec, self); // Pass parent to keep it alive
     }
 
     default:
@@ -696,7 +706,7 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
 
     // Return a proxy to the newly added element (using parent + index for Issue 26 fix)
     BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);
-    return StructProxy_New(bstruct);
+    return StructProxy_New(bstruct, self); // Pass parent to keep it alive
 }
 
 // ------------------------------------------------------------
@@ -783,7 +793,7 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
 
     // Return a proxy to the newly added inner vector (using parent + index for Issue 26 fix)
     BoundVector *bvec = new BoundVector(vec->name, vec, last_idx, inner_info);
-    return VectorProxy_New(bvec);
+    return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 }
 
 // ------------------------------------------------------------
@@ -1060,7 +1070,7 @@ PyTypeObject VectorProxyType = {
 // ------------------------------------------------------------
 // Create a new VectorProxy instance
 // ------------------------------------------------------------
-PyObject *VectorProxy_New(BoundVector *bound)
+PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent)
 {
     VectorProxyObject *obj =
         PyObject_New(VectorProxyObject, &VectorProxyType);
@@ -1072,5 +1082,7 @@ PyObject *VectorProxy_New(BoundVector *bound)
     }
 
     obj->bound = bound;
+    obj->parent_proxy = parent;
+    Py_XINCREF(parent); // Increment parent reference count if not nullptr
     return (PyObject *)obj;
 }

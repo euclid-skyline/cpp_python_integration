@@ -15,11 +15,11 @@ PyObject *create_cpp_proxy();
 
 // StructProxy (from aggregate_interface_proxy.cpp)
 extern PyTypeObject StructProxyType;
-PyObject *StructProxy_New(BoundStruct *bound);
+PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent = nullptr);
 
 // VectorProxy (from aggregate_interface_proxy.cpp)
 extern PyTypeObject VectorProxyType;
-PyObject *VectorProxy_New(BoundVector *bound);
+PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent = nullptr);
 
 // VectorIterator (for iteration protocol)
 extern PyTypeObject VectorIteratorType;

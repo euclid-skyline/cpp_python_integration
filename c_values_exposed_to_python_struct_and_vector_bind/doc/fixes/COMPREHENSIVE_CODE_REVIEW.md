@@ -9,9 +9,9 @@
 
 ## Overview
 
-This document contains 15 additional issues (Issues 29-43) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
+This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** All issues are under review and have been documented for prioritization into the development backlog.
+**Status:** Most issues are under review. Issues 29 and 48 have been FIXED and deployed.
 
 ---
 
@@ -70,7 +70,7 @@ if (PyType_Ready(&VectorIteratorType) < 0)
 ### Issue 30: Python Reference Counting Confusion in cppproxy_getattro
 **Status:** ⚠️ UNDER REVIEW  
 **File:** `python_proxy.cpp`, lines 97-100  
-**Severity:** CRITICAL  
+**Severity:** LOW  
 **Category:** Python C-API / Code Clarity
 
 **Problem:**
@@ -108,10 +108,10 @@ return pyval->to_python();  // Returns new reference (correct)
 
 ---
 
-### Issue 30: Inconsistent Error Messaging Between Root Proxy Paths
+### Issue 49: Inconsistent Error Messaging Between Root Proxy Paths
 **Status:** ⚠️ UNDER REVIEW  
 **File:** `python_proxy.cpp` lines 85-87, `cpp_module.cpp` lines 38-40  
-**Severity:** CRITICAL  
+**Severity:** HIGH  
 **Category:** User Experience / Error Handling Inconsistency
 
 **Problem:**
@@ -968,21 +968,150 @@ void *new_instance = ::operator new(struct_size);
 
 ---
 
+### Issue 48: Parent Lifetime Management for Nested Proxy Objects
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, `python_proxy.hpp`  
+**Severity:** CRITICAL  
+**Category:** Python C-API / Memory Management / Reference Counting
+
+**Problem:**
+When using Option B's Dynamic Element Resolution pattern with nested vectors (e.g., `enemy_waves` - a vector of vectors of structs), child proxy objects stored raw pointers to their parent `BoundVector`/`BoundStruct` objects without holding Python references. This created a critical use-after-free scenario:
+
+```python
+# Example from controller.py line 153-157:
+for i in range(len(cpp.enemy_waves)):
+    wave = cpp.enemy_waves[i]  # Creates VectorProxy for nested vector
+    print(f"\nWave {i} has {len(wave)} enemies:")
+    for j in range(len(wave)):
+        enemy = wave[j]  # Creates StructProxy with parent=wave's BoundVector
+        print(f"  Enemy {j}: health={enemy.health}, x={enemy.x}")
+        # ❌ Problem: If 'wave' gets garbage collected here, enemy's parent becomes dangling
+```
+
+**Failure Scenario:**
+1. `cpp.enemy_waves[i]` creates a `VectorProxyObject` containing a `BoundVector` with parent tracking
+2. `wave[j]` creates a `StructProxyObject` containing a `BoundStruct` that stores a raw pointer to that `BoundVector`
+3. Python's garbage collector may deallocate the `wave` VectorProxyObject if there are no references
+4. The `VectorProxy_dealloc` function deletes the `BoundVector`
+5. Accessing `enemy.health` calls `BoundStruct::instance()` which dereferences the deleted parent → **use-after-free crash**
+
+**Root Cause:** 
+- Child proxy objects (`StructProxy`, `VectorProxy`) used Option B's parent tracking pattern
+- Parent tracking stores raw C++ pointers (`BoundVector *m_parent_vector`)
+- No Python reference counting to keep parent `VectorProxyObject` alive
+- Parents could be deallocated while children still referenced them
+
+**Impact:** 
+- **CRITICAL**: Random crashes when iterating nested vectors
+- Unpredictable failures depending on GC timing
+- Example 6 in controller.py fails intermittently
+- Affects all nested structures: `vector<vector<T>>`, `vector<struct>` where struct accessed after iteration variable goes out of scope
+
+**Solution Applied:** ✅
+
+1. **Added `parent_proxy` field to proxy objects:**
+```cpp
+// python_proxy.cpp lines 222-226
+typedef struct
+{
+    PyObject_HEAD 
+    BoundStruct *bound;
+    PyObject *parent_proxy; // Reference to parent VectorProxy (if from vector element)
+} StructProxyObject;
+
+// python_proxy.cpp lines 472-476
+typedef struct
+{
+    PyObject_HEAD 
+    BoundVector *bound;
+    PyObject *parent_proxy; // Reference to parent VectorProxy (if nested vector)
+} VectorProxyObject;
+```
+
+2. **Updated constructor functions to accept and store parent:**
+```cpp
+// python_proxy.hpp
+PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent = nullptr);
+PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent = nullptr);
+
+// python_proxy.cpp lines 461-464
+obj->bound = bound;
+obj->parent_proxy = parent;
+Py_XINCREF(parent); // Increment parent reference count if not nullptr
+return (PyObject *)obj;
+```
+
+3. **Updated dealloc functions to release parent reference:**
+```cpp
+// python_proxy.cpp lines 236-241
+static void StructProxy_dealloc(PyObject *self)
+{
+    StructProxyObject *proxy = (StructProxyObject *)self;
+    delete proxy->bound;
+    Py_XDECREF(proxy->parent_proxy);  // Release parent reference
+    PyObject_Del(self);
+}
+```
+
+4. **Updated all call sites to pass parent when creating child proxies:**
+```cpp
+// VectorProxy_getitem - lines 547-552
+case ValueType::Struct:
+{
+    const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
+    BoundStruct *bstruct = new BoundStruct(
+        proxy->bound->name, proxy->bound, static_cast<std::size_t>(index), sinfo);
+    return StructProxy_New(bstruct, self); // Pass parent to keep it alive
+}
+
+// VectorProxy_append_new - line 709
+BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);
+return StructProxy_New(bstruct, self); // Pass parent to keep it alive
+
+// VectorProxy_append_new_vector - line 796
+BoundVector *bvec = new BoundVector(vec->name, vec, last_idx, inner_info);
+return VectorProxy_New(bvec, self); // Pass parent to keep it alive
+```
+
+**Result:**
+- Child proxy objects now hold proper Python reference to parent VectorProxyObject
+- Reference counting prevents parent deallocation while children exist
+- `Py_XINCREF(parent)` in constructor increments parent refcount
+- `Py_XDECREF(proxy->parent_proxy)` in destructor decrements when child is freed
+- Parent object stays alive as long as any child references it
+- Iterator example 6 now works reliably without crashes
+
+**Files Modified:**
+- `python_proxy.hpp` - Updated function signatures with optional parent parameter
+- `python_proxy.cpp` - Added parent_proxy field, reference counting, updated all proxy creation sites
+
+**Testing:** 
+- Example 6 in controller.py (`enemy_waves` nested iteration) now works without exceptions
+- All iteration patterns confirmed stable
+
+**Related Issues:**
+- Complements Issue 26 (Option B Dynamic Element Resolution) - fixes lifetime management gap
+- Part of Option B implementation (doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md)
+
+---
+
 **Distribution by Severity:**
 
 | Severity | Count | Issues |
 |----------|-------|--------|
-| CRITICAL | 4 | 29, 30, 31, 32 |
-| HIGH | 5 | 33, 34, 35, 36, 37 |
-| MEDIUM | 5 | 38, 39, 40, 41 |
-| LOW | 3 | 42, 43, 44, 45 |
+| CRITICAL | 3 | 31, 32, 46 |
+| HIGH | 7 | 33, 34, 35, 36, 37, 47, 49 |
+| MEDIUM | 5 | 38, 39, 40, 41, 44 |
+| LOW | 4 | 30, 42, 43, 45 |
+| **FIXED** | **2** | **29, 48** |
 
 **Distribution by Category:**
 
 | Category | Count | Issues |
 |----------|-------|--------|
-| Type Initialization | 1 | 29 |
-| Error Messaging | 1 | 30 |
+| Type Initialization | 1 | 29 ✅ |
+| Memory Management | 1 | 48 ✅ |
+| Error Messaging | 2 | 30, 49 |
 | Null Safety | 4 | 31, 33, 36, 46 |
 | Resource Leak | 3 | 32, 35, 37 |
 | Thread Safety | 1 | 34 |
@@ -998,22 +1127,26 @@ void *new_instance = ::operator new(struct_size);
 
 ## RECOMMENDATIONS
 
+### ✅ Completed Fixes
+1. **Issue 29** ✅ FIXED - VectorIteratorType initialized with PyType_Ready
+2. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+
 ### Immediate Action Items (Next Sprint)
-1. **Issue 29** - Initialize VectorIteratorType with PyType_Ready (CRITICAL - will crash on iteration)
-2. **Issue 31** - Check return value from PyObject_New in create_cpp_proxy (CRITICAL)
-3. **Issue 32** - Fix memory leaks in wrapper creation error paths (CRITICAL)
-4. **Issue 46** - Add null checks for proxy->bound in append operations (CRITICAL)
-5. **Issue 30** - Add consistent error messages with available variables listing
+1. **Issue 31** - Check return value from PyObject_New in create_cpp_proxy (CRITICAL)
+2. **Issue 32** - Fix memory leaks in wrapper creation error paths (CRITICAL)
+3. **Issue 46** - Add null checks for proxy->bound in append operations (CRITICAL)
 
 ### Important (Following Sprint)
+4. **Issue 49** - Add consistent error messages with available variables listing (HIGH)
+5. **Issue 47** - Validate struct_size before allocation (HIGH)
 6. **Issue 34** - Add thread safety to singleton initialization (HIGH)
 7. **Issue 33** - Add null safety checks to StructProxy (HIGH)
 8. **Issue 35** - Apply same fix as Issue 32 to StructProxy_getattro (HIGH)
-9. **Issue 47** - Validate struct_size before allocation (HIGH)
-10. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
-11. **Issue 37** - Review vector append error handling (HIGH)
+9. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
+10. **Issue 37** - Review vector append error handling (HIGH)
 
 ### Nice to Have (Development Backlog)
+11. **Issue 30** - Improve error message clarity in cppproxy_getattro (LOW)
 12. Issues 38-45 - Code quality, documentation, and style improvements
 
 ---
