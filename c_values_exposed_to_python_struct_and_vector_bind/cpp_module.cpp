@@ -196,6 +196,8 @@ extern "C" PyMODINIT_FUNC PyInit_cpp(void)
         return nullptr;
     if (PyType_Ready(&VectorProxyType) < 0)
         return nullptr;
+    if (PyType_Ready(&VectorIteratorType) < 0)
+        return nullptr;
 
     // Initialize our custom module type
     if (PyType_Ready(&CppModuleType) < 0)

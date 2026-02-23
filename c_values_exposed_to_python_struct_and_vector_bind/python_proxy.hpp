@@ -20,3 +20,6 @@ PyObject *StructProxy_New(BoundStruct *bound);
 // VectorProxy (from aggregate_interface_proxy.cpp)
 extern PyTypeObject VectorProxyType;
 PyObject *VectorProxy_New(BoundVector *bound);
+
+// VectorIterator (for iteration protocol)
+extern PyTypeObject VectorIteratorType;
