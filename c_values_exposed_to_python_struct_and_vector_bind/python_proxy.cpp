@@ -84,7 +84,29 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 
     if (!val)
     {
-        PyErr_Format(PyExc_AttributeError, "Unknown C++ variable '%s'", name);
+        // Build list of available variables for better error message
+        std::string available_vars;
+        size_t count = PyInterface::g_values.size();
+        size_t i = 0;
+        for (const auto &pair : PyInterface::g_values)
+        {
+            available_vars += pair.first;
+            if (++i < count)
+                available_vars += ", ";
+        }
+
+        if (available_vars.empty())
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - no variables are currently bound",
+                         name);
+        }
+        else
+        {
+            PyErr_Format(PyExc_AttributeError,
+                         "Unknown C++ variable '%s' - available variables: %s",
+                         name, available_vars.c_str());
+        }
         return nullptr;
     }
 
@@ -124,7 +146,10 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
         PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
         if (!pyval)
         {
-            PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
+            // This shouldn't happen if val->type is scalar (Int, Float, Bool, String)
+            PyErr_Format(PyExc_RuntimeError,
+                         "Internal error: scalar type '%d' is not mapped to PyBoundValue",
+                         static_cast<int>(val->type));
             return nullptr;
         }
         return pyval->to_python();

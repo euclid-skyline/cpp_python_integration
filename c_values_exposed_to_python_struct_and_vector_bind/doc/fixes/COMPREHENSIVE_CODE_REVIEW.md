@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** All critical issues fixed. Issues 29, 31, 32, 33, 35, 46, 47, and 48 have been FIXED and deployed.
+**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 46, 47, 49, and 48 have been FIXED and deployed.
 
 ---
 
@@ -174,8 +174,8 @@ case ValueType::Vector:
 ## HIGH-PRIORITY ISSUES
 
 ### Issue 49: Inconsistent Error Messaging Between Root Proxy Paths
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp` lines 85-87, `cpp_module.cpp` lines 38-40  
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp` lines 85-112  
 **Severity:** HIGH  
 **Category:** User Experience / Error Handling Inconsistency
 
@@ -183,14 +183,14 @@ case ValueType::Vector:
 The root proxy (`cppproxy_getattro`) and module proxy (`cpp_module_getattr`) handle unknown attributes differently. The root proxy provides no helpful error message, while the module proxy lists available variables.
 
 ```cpp
-// python_proxy.cpp cppproxy_getattro() (ROOT PROXY PATH):
+// python_proxy.cpp cppproxy_getattro() (BEFORE):
 if (!val)
 {
     PyErr_Format(PyExc_AttributeError, "Unknown C++ variable '%s'", name);
     return nullptr;  // ❌ No list of available variables!
 }
 
-// cpp_module.cpp cpp_module_getattr() (MODULE PATH):
+// cpp_module.cpp cpp_module_getattr() (CORRECT):
 if (!val)
 {
     // ✅ Builds helpful error message with available variables
@@ -210,9 +210,10 @@ if (!val)
 
 **Impact:** Poor developer experience when using root proxy path - users get unhelpful error messages.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+Updated `cppproxy_getattro()` to include list of available variables:
+
 ```cpp
-// In python_proxy.cpp, cppproxy_getattro():
 if (!val)
 {
     // Build list of available variables for better error message
@@ -241,6 +242,9 @@ if (!val)
     return nullptr;
 }
 ```
+
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Updated cppproxy_getattro to list available variables
 
 ---
 
@@ -678,14 +682,14 @@ void *element_ptr(std::size_t index) const
 
 ## LOW-PRIORITY ISSUES
 
-### Issue 30: Python Reference Counting Confusion in cppproxy_getattro
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp`, lines 97-100  
+### Issue 30: Misleading Error Message in cppproxy_getattro
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 121-129  
 **Severity:** LOW  
-**Category:** Python C-API / Code Clarity
+**Category:** Debugging / Developer Experience
 
 **Problem:**
-The error message when dynamic_cast fails is misleading. The current code doesn't clearly explain what happened:
+The error message when dynamic_cast fails was misleading. The code didn't clearly explain what happened:
 
 ```cpp
 PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
@@ -694,7 +698,6 @@ if (!pyval)
     PyErr_Format(PyExc_RuntimeError, "Internal error: scalar type not PyBoundValue");
     return nullptr;  // Message doesn't explain the actual issue
 }
-return pyval->to_python();
 ```
 
 When `dynamic_cast` fails, it means a non-scalar type was incorrectly routed to this branch, not that "it's not PyBoundValue." The message creates confusion during debugging.
@@ -703,7 +706,9 @@ When `dynamic_cast` fails, it means a non-scalar type was incorrectly routed to 
 
 **Impact:** Difficult to diagnose bugs when this error path is triggered.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+Updated error message to include the actual type value:
+
 ```cpp
 PyBoundValue *pyval = dynamic_cast<PyBoundValue *>(val);
 if (!pyval)
@@ -714,8 +719,11 @@ if (!pyval)
                  static_cast<int>(val->type));
     return nullptr;
 }
-return pyval->to_python();  // Returns new reference (correct)
+return pyval->to_python();
 ```
+
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Updated error message with type information
 
 ---
 
@@ -1138,10 +1146,10 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Severity | Count | Issues |
 |----------|-------|--------|
 | CRITICAL | 0 | — |
-| HIGH | 5 | 34, 36, 37, 49 |
+| HIGH | 4 | 34, 36, 37 |
 | MEDIUM | 4 | 38, 39, 40, 41 |
-| LOW | 5 | 30, 42, 43, 44, 45 |
-| **FIXED** | **7** | **29, 31, 32, 33, 35, 46, 47, 48** |
+| LOW | 4 | 42, 43, 44, 45 |
+| **FIXED** | **9** | **29, 30, 31, 32, 33, 35, 46, 47, 48, 49** |
 
 **Distribution by Category:**
 
@@ -1149,7 +1157,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | Type Initialization | 1 | 29 ✅ |
 | Memory Management | 1 | 48 ✅ |
-| Error Messaging / UX | 3 | 30, 42, 49 |
+| Error Messaging / UX | 2 | 30 ✅, 42, 49 ✅ |
 | Null Safety | 5 | 31 ✅, 33 ✅, 36, 46 ✅, — |
 | Resource Leak | 2 | 32 ✅, 35 ✅, 37 |
 | Thread Safety | 1 | 34 |
@@ -1168,13 +1176,15 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 
 ### ✅ Completed Fixes
 1. **Issue 29** ✅ FIXED - VectorIteratorType initialized with PyType_Ready
-2. **Issue 31** ✅ FIXED - create_cpp_proxy checks PyObject_New failure
-3. **Issue 32** ✅ FIXED - Wrapper cleanup on proxy creation failure
-4. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
-5. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
-6. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
-7. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
-8. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+2. **Issue 30** ✅ FIXED - Error message includes type information in dynamic_cast failure
+3. **Issue 31** ✅ FIXED - create_cpp_proxy checks PyObject_New failure
+4. **Issue 32** ✅ FIXED - Wrapper cleanup on proxy creation failure
+5. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
+6. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
+7. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
+8. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
+9. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+10. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
 
 ### Immediate Action Items (Next Sprint)
 All critical issues have been resolved.
@@ -1183,7 +1193,6 @@ All critical issues have been resolved.
 1. **Issue 34** - Add thread safety to singleton initialization (HIGH)
 2. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
 3. **Issue 37** - Review vector append error handling (HIGH)
-4. **Issue 49** - Add consistent error messages with available variables listing (HIGH)
 
 ### Nice to Have (Development Backlog)
 11. **Issue 30** - Improve error message clarity in cppproxy_getattro (LOW)
