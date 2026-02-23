@@ -225,6 +225,19 @@ case ValueType::Struct:
 
 ---
 
+### Issue 26: Vector Element Proxies Can Dangle After Reallocation
+**Status:** 🟠 DEFERRED  
+**File:** `python_proxy.cpp`, lines 430-570  
+**Severity:** MEDIUM  
+**Problem:**
+Vector element proxies store raw pointers to elements inside `std::vector`. When Python appends to the same vector, the vector may reallocate, invalidating all existing element pointers. Existing `StructProxy`/`VectorProxy` objects then reference freed memory.
+
+**Impact:** Use-after-free when keeping a proxy to a vector element and then appending to the same vector.
+
+**Suggested Fix:** Document this limitation or store stable handles (e.g., indices + parent vector) and resolve the pointer on each access. Alternatively, disable append while element proxies are live.
+
+---
+
 ## DESIGN ISSUES
 
 ### Issue 7: No Support for Vector Slicing
@@ -395,6 +408,71 @@ using ByteBool = std::byte;
 
 ---
 
+### Issue 23: Missing Null Checks After PyUnicode_AsUTF8 in Proxy Accessors
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 70-170 and 232-324  
+**Severity:** MEDIUM  
+**Problem:**
+`PyUnicode_AsUTF8()` can return `nullptr` (e.g., on memory error or non-unicode input). The code uses the returned pointer without checking, which can lead to crashes when passing the null pointer to `get_value_raw()` or `get_field()`.
+
+**Impact:** Potential crash in edge cases when attribute names are not valid unicode or during low-memory conditions.
+
+**Solution:** ✅ **IMPLEMENTED** - Added null checks and `TypeError` for non-string attribute/field names.
+
+---
+
+### Issue 24: Missing Null Checks for sys/path Before Use
+**Status:** ✅ FIXED  
+**File:** `main.cpp`, lines 150-168  
+**Severity:** LOW  
+**Problem:**
+`PyImport_ImportModule("sys")` and `PyObject_GetAttrString(sys, "path")` are used without checking for null. If either fails, the code dereferences null pointers.
+
+**Impact:** Potential crash if Python import or attribute access fails.
+
+**Solution:** ✅ **IMPLEMENTED** - Added null checks for `sys` and `path` with error handling.
+
+---
+
+### Issue 25: dump_sys_path Assumes All Entries Are Unicode
+**Status:** ✅ FIXED  
+**File:** `main.cpp`, lines 332-342  
+**Severity:** LOW  
+**Problem:**
+`PyUnicode_AsUTF8(item)` is called without checking the type or null return. Non-string entries in `sys.path` can trigger a null result.
+
+**Impact:** Potential crash or garbage output if `sys.path` contains non-unicode entries.
+
+**Solution:** ✅ **IMPLEMENTED** - Added unicode/type checks and safe fallbacks for non-string entries.
+
+---
+
+### Issue 27: Missing Null Check for PyObject_New in Proxy Constructors
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 176-215 and 730-760  
+**Severity:** LOW  
+**Problem:**
+`PyObject_New()` can return `nullptr` on allocation failure. `StructProxy_New()` and `VectorProxy_New()` do not check the result before dereferencing.
+
+**Impact:** Potential crash in low-memory situations.
+
+**Solution:** ✅ **IMPLEMENTED** - Added null checks and `PyErr_NoMemory()` before using the allocation.
+
+---
+
+### Issue 28: Missing Null Checks in VectorProxy_append String Conversion
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 780-820  
+**Severity:** LOW  
+**Problem:**
+`PyUnicode_AsUTF8String()` and `PyBytes_AsString()` can return `nullptr`, but the code uses the results without validation.
+
+**Impact:** Potential crash if conversion fails (e.g., memory error).
+
+**Solution:** ✅ **IMPLEMENTED** - Added checks for `PyUnicode_AsUTF8String()` and `PyBytes_AsString()` failures.
+
+---
+
 ## TESTING GAPS
 
 ### Issue 15: No Boundary Testing in controller.py
@@ -454,8 +532,14 @@ Current coverage:
 | ✅ FIXED | Issue 18: Root proxy double-free | CRITICAL | High | ✓ RESOLVED |
 | ✅ FIXED | Issue 19: append_new_vector type-punning | CRITICAL | High | ✓ RESOLVED |
 | ✅ FIXED | Issue 20: Nested struct size calc | IMPORTANT | Medium | ✓ RESOLVED |
+| 🟠 DEFERRED | Issue 26: Vector element proxy invalidation | IMPORTANT | Medium | Needs fix |
 | ✅ FIXED | Issue 21: sys.path ref leak | CODE QUALITY | Low | ✓ RESOLVED |
 | ✅ FIXED | Issue 22: std::byte include | CODE QUALITY | Low | ✓ RESOLVED |
+| ✅ FIXED | Issue 23: PyUnicode_AsUTF8 null checks | CODE QUALITY | Medium | ✓ RESOLVED |
+| ✅ FIXED | Issue 24: sys/path null checks | CODE QUALITY | Low | ✓ RESOLVED |
+| ✅ FIXED | Issue 25: dump_sys_path unicode check | CODE QUALITY | Low | ✓ RESOLVED |
+| 🟠 DEFERRED | Issue 27: PyObject_New null checks | CODE QUALITY | Low | Needs fix |
+| 🟠 DEFERRED | Issue 28: String conversion null checks | CODE QUALITY | Low | Needs fix |
 | ✅ FIXED | Issue 15: Boundary testing | TESTING | Medium | ✓ RESOLVED |
 | ✅ FIXED | Issue 16: Nested vector tests | TESTING | Medium | ✓ RESOLVED |
 | ✅ FIXED | Issue 17: Usage documentation | DOCUMENTATION | Low | ✓ RESOLVED |
@@ -499,6 +583,9 @@ Current coverage:
 1. Issue 5 - Error handling in controller.py
 2. Issue 11 - String representation for debugging
 3. Issue 7 - Vector slicing support
+4. Issue 26 - Vector element proxy invalidation
+5. Issue 27 - PyObject_New null checks
+6. Issue 28 - String conversion null checks
 
 **Later (Nice to Have):**
 1. Issue 6 - Enhanced error messages
@@ -520,15 +607,16 @@ All critical and documentation issues are resolved; remaining items are optional
 The project now has:
 - ✅ **4 critical bugs FIXED** (Issues 1, 2, 3, 4)
 - ✅ **2 critical issues resolved** (Issues 18, 19)
-- ✅ **6 code quality issues RESOLVED** (Issues 12, 13, 14, 21, 22)
+- ✅ **11 code quality issues RESOLVED** (Issues 12, 13, 14, 21, 22, 23, 24, 25, 27, 28)
 - ✅ **1 important issue resolved** (Issue 20)
+- 🟠 **1 important issue pending** (Issue 26)
 - ✅ **2 additional features IMPLEMENTED** (Issues 8, 10 - iterator protocol and __len__)
 - ✅ **Documentation complete** (Issue 17)
 - ✅ **Comprehensive test suite** (14 new test cases in controller.py)
 - ✅ **Production-ready architecture** with sound design
 
 ### Remaining Work (Deferred)
-- 5 optional enhancement and bug-fix items for future sprints
+- 6 optional enhancement and bug-fix items for future sprints
 - Non-blocking, lower priority features
 - Good candidates for next development cycle
 
@@ -537,7 +625,7 @@ The project now has:
 - `CRITICAL_FIXES_APPLIED.md` - Details of 4 critical fixes
 - `CODE_QUALITY_FIXES.md` - Code quality improvements
 - `INCLUDE_DEPENDENCY_ANALYSIS.md` - Architecture verification
-- `doc/architecture/USAGE_GUIDE.md` - Usage documentation (needs update)
+- `doc/architecture/USAGE_GUIDE.md` - Usage documentation
 - `TESTING_IMPROVEMENTS.md` - Testing enhancement details
 
 ### Deployment Readiness

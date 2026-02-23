@@ -150,7 +150,19 @@ int main()
     if (!using_bundled && !using_zip)
     {
         PyObject *sys = PyImport_ImportModule("sys");
+        if (!sys)
+        {
+            PyErr_Print();
+            return 1;
+        }
+
         PyObject *path = PyObject_GetAttrString(sys, "path");
+        if (!path)
+        {
+            PyErr_Print();
+            Py_DECREF(sys);
+            return 1;
+        }
 
         auto exeDir = pyembed::get_executable_dir();
         auto scriptsPath = exeDir / "scripts";
@@ -340,7 +352,19 @@ void dump_sys_path()
     for (Py_ssize_t i = 0; i < size; ++i)
     {
         PyObject *item = PyList_GetItem(path, i);
-        std::cout << PyUnicode_AsUTF8(item) << "\n";
+        if (!PyUnicode_Check(item))
+        {
+            std::cout << "<non-unicode entry>\n";
+            continue;
+        }
+        const char *entry = PyUnicode_AsUTF8(item);
+        if (!entry)
+        {
+            PyErr_Clear();
+            std::cout << "<unprintable entry>\n";
+            continue;
+        }
+        std::cout << entry << "\n";
     }
 
     std::cout << "----------------\n\n";

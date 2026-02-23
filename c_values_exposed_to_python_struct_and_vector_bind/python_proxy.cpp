@@ -73,6 +73,11 @@ typedef struct
 static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 {
     const char *name = PyUnicode_AsUTF8(attr);
+    if (!name)
+    {
+        PyErr_SetString(PyExc_TypeError, "Attribute name must be a string");
+        return nullptr;
+    }
 
     // Use get_value_raw() to get any BoundValue (scalar, struct, or vector)
     BoundValue *val = PyInterface::get_value_raw(name);
@@ -123,6 +128,11 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 static int cppproxy_setattro(PyObject *, PyObject *attr, PyObject *value)
 {
     const char *name = PyUnicode_AsUTF8(attr);
+    if (!name)
+    {
+        PyErr_SetString(PyExc_TypeError, "Attribute name must be a string");
+        return -1;
+    }
 
     BoundValue *val = PyInterface::get_value_raw(name);
 
@@ -237,6 +247,11 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     StructProxyObject *proxy = (StructProxyObject *)self;
 
     const char *name = PyUnicode_AsUTF8(attr);
+    if (!name)
+    {
+        PyErr_SetString(PyExc_TypeError, "Field name must be a string");
+        return nullptr;
+    }
     const FieldInfo *field = proxy->bound->get_field(name);
 
     if (!field)
@@ -294,6 +309,11 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
     StructProxyObject *proxy = (StructProxyObject *)self;
 
     const char *name = PyUnicode_AsUTF8(attr);
+    if (!name)
+    {
+        PyErr_SetString(PyExc_TypeError, "Field name must be a string");
+        return -1;
+    }
     const FieldInfo *field = proxy->bound->get_field(name);
 
     if (!field)
@@ -427,6 +447,12 @@ PyObject *StructProxy_New(BoundStruct *bound)
 {
     StructProxyObject *obj =
         PyObject_New(StructProxyObject, &StructProxyType);
+
+    if (!obj)
+    {
+        PyErr_NoMemory();
+        return nullptr;
+    }
 
     obj->bound = bound;
     return (PyObject *)obj;
@@ -811,7 +837,16 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
             return nullptr;
         }
         PyObject *utf8 = PyUnicode_AsUTF8String(value);
+        if (!utf8)
+        {
+            return nullptr;
+        }
         const char *s = PyBytes_AsString(utf8);
+        if (!s)
+        {
+            Py_DECREF(utf8);
+            return nullptr;
+        }
         std::string v = s;
         Py_DECREF(utf8);
         vec->append_from_cpp(&v);
@@ -1021,6 +1056,12 @@ PyObject *VectorProxy_New(BoundVector *bound)
 {
     VectorProxyObject *obj =
         PyObject_New(VectorProxyObject, &VectorProxyType);
+
+    if (!obj)
+    {
+        PyErr_NoMemory();
+        return nullptr;
+    }
 
     obj->bound = bound;
     return (PyObject *)obj;
