@@ -49,12 +49,16 @@ public:
     // Reflection helpers
     std::size_t size() const
     {
-        return m_info->size_fn ? m_info->size_fn(raw_vector()) : 0;
+        if (!m_info || !m_info->size_fn)
+            return 0;
+        return m_info->size_fn(raw_vector());
     }
 
     void *element_ptr(std::size_t index) const
     {
-        return m_info->element_ptr_fn ? m_info->element_ptr_fn(raw_vector(), index) : nullptr;
+        if (!m_info || !m_info->element_ptr_fn)
+            return nullptr;
+        return m_info->element_ptr_fn(raw_vector(), index);
     }
 
     const VectorInfo *info() const { return m_info; }

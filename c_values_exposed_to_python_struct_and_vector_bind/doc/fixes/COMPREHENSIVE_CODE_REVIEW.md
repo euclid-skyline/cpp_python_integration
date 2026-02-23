@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 46, 47, 49, and 48 have been FIXED and deployed.
+**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 41, 46, 47, 49, and 48 have been FIXED and deployed.
 
 ---
 
@@ -633,13 +633,13 @@ void *grid_vec_element_ptr(void *ptr, std::size_t idx)
 ---
 
 ### Issue 41: Missing nullptr Checks for VectorInfo
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `reflection_vector.hpp`, lines 41-47  
+**Status:** ✅ FIXED  
+**File:** `reflection_vector.hpp`, lines 51-62  
 **Severity:** MEDIUM  
 **Category:** Defensive Programming
 
 **Problem:**
-Methods check if function pointers are non-null, but never validate that `m_info` itself is non-null:
+Methods checked if function pointers are non-null, but never validated that `m_info` itself is non-null:
 
 ```cpp
 std::size_t size() const
@@ -661,7 +661,9 @@ If `m_info` is nullptr, dereferencing it causes undefined behavior.
 
 **Impact:** Potential null pointer dereference if VectorInfo is not properly initialized.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+Added null checks for m_info before dereferencing:
+
 ```cpp
 std::size_t size() const
 {
@@ -677,6 +679,9 @@ void *element_ptr(std::size_t index) const
     return m_info->element_ptr_fn(raw_vector(), index);
 }
 ```
+
+**Files Modified:**
+- [reflection_vector.hpp](reflection_vector.hpp) - Added defensive null checks for m_info pointer
 
 ---
 
@@ -1147,9 +1152,9 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | CRITICAL | 0 | — |
 | HIGH | 4 | 34, 36, 37 |
-| MEDIUM | 4 | 38, 39, 40, 41 |
+| MEDIUM | 3 | 38, 39, 40 |
 | LOW | 4 | 42, 43, 44, 45 |
-| **FIXED** | **9** | **29, 30, 31, 32, 33, 35, 46, 47, 48, 49** |
+| **FIXED** | **10** | **29, 30, 31, 32, 33, 35, 41, 46, 47, 48, 49** |
 
 **Distribution by Category:**
 
@@ -1164,7 +1169,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Error Handling | 0 | — |
 | Type Safety | 1 | 38 |
 | Robustness | 1 | 40 |
-| Defensive Programming | 1 | 41 |
+| Defensive Programming | 1 | 41 ✅ |
 | Python C-API Semantics | 1 | 39 |
 | Documentation / Maintainability | 1 | 44 |
 | Code Style / Clarity | 1 | 43 |
@@ -1181,10 +1186,11 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 4. **Issue 32** ✅ FIXED - Wrapper cleanup on proxy creation failure
 5. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
 6. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
-7. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
-8. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
-9. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
-10. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
+7. **Issue 41** ✅ FIXED - Null checks for VectorInfo in reflection methods
+8. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
+9. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
+10. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+11. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
 
 ### Immediate Action Items (Next Sprint)
 All critical issues have been resolved.
