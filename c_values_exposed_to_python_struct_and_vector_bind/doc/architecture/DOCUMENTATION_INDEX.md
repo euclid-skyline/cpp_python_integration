@@ -187,6 +187,31 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+### 10. **SCALAR_VS_COMPLEX_OWNERSHIP.md** – OWNERSHIP COMPARISON
+**Purpose:** Explains ownership differences between scalar, struct, and vector types  
+**Reading Time:** 30-40 minutes  
+**Best For:** Understanding why Issue 18 affects complex types but not scalars
+
+**Covers:**
+- Fundamental ownership model differences
+- Scalar types: Copy-on-access design (inherently safe)
+- Struct types: Shared ownership vulnerability (before fix)
+- Vector types: Shared ownership + reallocation issues (before fixes)
+- Wrapper ownership pattern solution (Issue 18 fix)
+- Parent tracking for vectors (Issue 26 fix)
+- Comparison matrix of all three types
+- Practical examples and safe patterns
+- Root cause analysis of Issue 18
+- Three-tier memory safety strategies
+
+**Key Insights:**
+- Why scalars don't have Issue 18 problem
+- How wrapper copies prevent double-free
+- Why parent tracking prevents use-after-free
+- Ownership invariants maintained across all types
+
+---
+
 ## 🎯 Reading Paths Based on Your Goals
 
 ### Path 1: "I want to understand the architecture"
@@ -498,7 +523,8 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 | CIRCULAR_DEPENDENCY_RESOLUTION.md | ~480 | Header architecture pattern | 20-25 min |
 | USAGE_GUIDE.md | ~350 | Python API reference | 15-20 min |
 | WRAPPER_OWNERSHIP_PATTERN.md | ~280 | Proxy ownership semantics | 15-20 min |
-| **Total** | **~5580** | **Comprehensive coverage** | **4-5 hours** |
+| SCALAR_VS_COMPLEX_OWNERSHIP.md | ~900 | Scalar vs struct vs vector ownership | 30-40 min |
+| **Total** | **~6480** | **Comprehensive coverage** | **5-6 hours** |
 
 **Recommended approach:** Read over 3-4 days to allow concepts to solidify.
 
@@ -525,10 +551,12 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 - SOURCE_CODE_DOCUMENTATION.md (python_proxy.cpp)
 - WRAPPER_OWNERSHIP_PATTERN.md (proxy ownership)
 
-**Vector Safety & Issue 26:**
-- VECTOR_ELEMENT_PROXY_INVALIDATION.md (problem analysis)
-- OPTION_B_IMPLEMENTATION_GUIDE.md (implementation)
-- CIRCULAR_DEPENDENCY_RESOLUTION.md (header architecture)
+**Ownership & Safety (Issues 18 & 26):**
+- SCALAR_VS_COMPLEX_OWNERSHIP.md (ownership comparison) ← START HERE
+- WRAPPER_OWNERSHIP_PATTERN.md (Issue 18 fix)
+- VECTOR_ELEMENT_PROXY_INVALIDATION.md (Issue 26 problem analysis)
+- OPTION_B_IMPLEMENTATION_GUIDE.md (Issue 26 implementation)
+- CIRCULAR_DEPENDENCY_RESOLUTION.md (header architecture pattern)
 - CODE_REVIEW.md in fixes/ (status tracking)
 
 **Type Conversion:**

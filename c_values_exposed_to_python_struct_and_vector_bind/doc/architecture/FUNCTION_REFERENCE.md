@@ -996,6 +996,270 @@ StructProxy_dealloc(PyObject *self) {
 
 ---
 
+### Critical Memory Safety Patterns
+
+The system incorporates two critical memory safety patterns that prevent double-free and use-after-free vulnerabilities. These patterns are essential for reliable C++/Python integration.
+
+#### Pattern 1: Wrapper Ownership (Prevents Double-Free)
+
+**Problem Solved:** Issue #18 - Double-free when multiple proxies point to same underlying data
+
+**Original Problem:**
+```cpp
+// BAD: Multiple proxies sharing single BoundValue* (FIXED)
+PyInterface::g_values["player"] = bound_struct_ptr;  // Central registry
+
+// When creating proxy:
+StructProxy *proxy1 = create_proxy();
+proxy1->bound = g_values["player"];  // ❌ Shares pointer
+
+StructProxy *proxy2 = create_proxy();
+proxy2->bound = g_values["player"];  // ❌ Shares same pointer
+
+// Cleanup:
+delete proxy1->bound;  // Deletes BoundStruct
+delete proxy2->bound;  // ❌ DOUBLE-FREE! (same pointer)
+```
+
+**Solution: Proxy-Owned Wrapper Copies**
+```cpp
+// python_proxy.cpp
+StructProxy *StructProxy_New(BoundStruct *bound) {
+    StructProxy *proxy = PyObject_New(StructProxy, &StructProxyType);
+    
+    // Create COPY of wrapper, pointing to SAME underlying data
+    proxy->bound = new BoundStruct(*bound);  // ✓ Copy wrapper
+    
+    // Wrapper contains:
+    //   void *m_instance (points to actual struct in C++)
+    //   StructInfo *m_info (metadata pointer)
+    // Both copied, but m_instance still points to original data
+    
+    return proxy;
+}
+
+void StructProxy_dealloc(PyObject *self) {
+    StructProxy *proxy = (StructProxy*)self;
+    delete proxy->bound;  // ✓ Deletes THIS proxy's wrapper copy
+    PyObject_Del(self);   // ✓ No double-free possible
+}
+```
+
+**Key Insight:**
+- `g_values` registry stores wrappers (BoundValue*, BoundStruct*, BoundVector*)
+- Each proxy gets its **own copy** of the wrapper
+- Wrappers contain pointers to actual data (void *m_instance)
+- Multiple wrapper copies → all point to same data → safe cleanup
+
+**Memory Layout:**
+```
+C++ Memory:
+┌──────────────────────┐
+│ Player player;       │  ← Actual data (owned by main.cpp)
+│   health: 100        │
+│   name: "Alice"      │
+└──────────────────────┘
+         ↑         ↑
+         │         │
+         │         └─────────────┐
+         │                       │
+Python Proxies:                  │
+┌─────────────────────┐  ┌─────────────────────┐
+│ StructProxy #1      │  │ StructProxy #2      │
+│  bound:             │  │  bound:             │
+│   BoundStruct {     │  │   BoundStruct {     │
+│     m_instance: ────┼──┘     m_instance: ────┘
+│     m_info: ...     │  │     m_info: ...     │
+│   }                 │  │   }                 │
+└─────────────────────┘  └─────────────────────┘
+    ↑ Owns wrapper         ↑ Owns DIFFERENT wrapper
+    
+Cleanup:
+  delete proxy1->bound;  // Deletes BoundStruct copy #1
+  delete proxy2->bound;  // Deletes BoundStruct copy #2 (SAFE)
+  // Original Player in C++ unaffected
+```
+
+**See:** [WRAPPER_OWNERSHIP_PATTERN.md](WRAPPER_OWNERSHIP_PATTERN.md) for detailed analysis
+
+---
+
+#### Pattern 2: Parent Tracking for Vector Elements (Prevents Use-After-Free)
+
+**Problem Solved:** Issue #26 - Vector element proxy invalidation after reallocation
+
+**Original Problem:**
+```cpp
+// BAD: Storing raw pointers to vector elements (FIXED)
+void *elem_ptr = vector.data() + index * elem_size;  // Raw pointer
+StructProxy *proxy = create_proxy(elem_ptr);
+
+// Later:
+vector.push_back(new_element);  // Reallocation!
+// elem_ptr now points to FREED MEMORY
+
+// Python access:
+proxy->bound->m_instance;  // ❌ USE-AFTER-FREE!
+```
+
+**Memory Problem:**
+```
+Before reallocation:
+┌────────────────────────────┐
+│ Vector capacity: 4         │
+│ [0] Player {100, "Alice"}  │ ← elem_ptr points here
+│ [1] Player {80, "Bob"}     │
+│ [2] Player {50, "Carol"}   │
+│ [3] Player {120, "Dave"}   │
+└────────────────────────────┘
+
+After push_back (triggers reallocation):
+Old memory: FREED ❌
+┌────────────────────────────┐
+│ GARBAGE (deallocated)      │ ← elem_ptr still points here!
+└────────────────────────────┘
+
+New memory:
+┌────────────────────────────────┐
+│ Vector capacity: 8             │
+│ [0] Player {100, "Alice"}      │ ← Moved to new location
+│ [1] Player {80, "Bob"}         │
+│ [2] Player {50, "Carol"}       │
+│ [3] Player {120, "Dave"}       │
+│ [4] Player {90, "Eve"}         │ ← Newly added
+└────────────────────────────────┘
+```
+
+**Solution: Store Parent + Index, Resolve Dynamically**
+
+**Option A (Initial Implementation):**
+```cpp
+// reflection_vector.hpp
+class BoundVector {
+public:
+    void *element_ptr(std::size_t index) {
+        return m_info->element_ptr_fn(m_vec_ptr, index);
+        // ✓ Always gets fresh pointer from current vector memory
+    }
+};
+
+// python_proxy.cpp
+StructProxy *VectorProxy_getitem(VectorProxy *self, Py_ssize_t index) {
+    void *elem_ptr = self->bound->element_ptr(index);  // ✓ Fresh every time
+    BoundStruct *bs = new BoundStruct(..., elem_ptr, ...);
+    return StructProxy_New(bs);
+}
+```
+
+**Option B (Enhanced Implementation - Current):**
+```cpp
+// reflection_struct.hpp
+class BoundStruct {
+    void *m_instance;
+    const StructInfo *m_info;
+    
+    // Parent tracking for dynamic resolution
+    BoundVector *m_parent_vector = nullptr;  // ✓ Parent container
+    std::size_t m_parent_index = 0;          // ✓ Position in parent
+    
+public:
+    // Get actual pointer (resolves dynamically if has parent)
+    void *get_instance_ptr() const {
+        if (m_parent_vector != nullptr) {
+            // ✓ Resolve fresh pointer from parent
+            return m_parent_vector->element_ptr(m_parent_index);
+        }
+        return m_instance;  // Regular struct (no parent)
+    }
+    
+    void *get_field_ptr(const FieldInfo *field) {
+        return static_cast<char*>(get_instance_ptr()) + field->offset;
+        // ✓ Uses fresh pointer, safe after reallocation
+    }
+};
+
+// python_proxy.cpp
+StructProxy *VectorProxy_getitem(VectorProxy *self, Py_ssize_t index) {
+    // Store PARENT + INDEX instead of raw pointer
+    BoundStruct *bs = new BoundStruct(
+        nullptr,              // m_instance (not used when parent set)
+        elem_struct_info,
+        self->bound,          // ✓ Parent vector
+        index                 // ✓ Index in parent
+    );
+    return StructProxy_New(bs);
+}
+```
+
+**Safety Guarantee:**
+```python
+enemies = cpp.enemies  # VectorProxy
+enemy0 = enemies[0]    # StructProxy with parent tracking
+
+# enemy0 stores:
+#   m_parent_vector = pointer to VectorProxy's BoundVector
+#   m_parent_index = 0
+
+cpp.enemies.append_new()  # Triggers reallocation
+
+# Later access:
+health = enemy0.health
+
+# Execution:
+#   get_field_ptr("health")
+#   → get_instance_ptr()
+#   → m_parent_vector->element_ptr(m_parent_index)
+#   → Returns FRESH pointer from NEW vector memory
+#   → ✓ SAFE, no use-after-free
+```
+
+**Performance Impact:** Minimal - one extra indirection for vector elements
+
+**See:** 
+- [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md) - Problem analysis
+- [OPTION_B_IMPLEMENTATION_GUIDE.md](OPTION_B_IMPLEMENTATION_GUIDE.md) - Implementation details
+- [CIRCULAR_DEPENDENCY_RESOLUTION.md](CIRCULAR_DEPENDENCY_RESOLUTION.md) - Header dependency solution
+
+---
+
+### Memory Safety Summary
+
+**Two-Layer Safety Strategy:**
+
+1. **Wrapper Ownership (Issue #18):**
+   - Prevents: Double-free when multiple proxies exist
+   - Solution: Each proxy owns its own wrapper copy
+   - Cost: Negligible (wrapper is just two pointers)
+
+2. **Parent Tracking (Issue #26):**
+   - Prevents: Use-after-free for vector element proxies
+   - Solution: Store parent + index, resolve dynamically
+   - Cost: One indirection per field access on vector elements
+
+**Combined Result:**
+```python
+# Safe operations:
+p1 = cpp.player        # ✓ Proxy owns wrapper copy
+p2 = cpp.player        # ✓ Different wrapper, same data
+del p1                 # ✓ No double-free
+
+e = cpp.enemies[0]     # ✓ Parent tracking enabled
+cpp.enemies.append_new()  # Vector reallocates
+print(e.health)        # ✓ Fresh pointer resolved, safe
+```
+
+**Trade-offs:**
+- Small memory overhead (parent pointers in BoundStruct)
+- Small performance overhead (dynamic resolution for vector elements)
+- **Eliminates entire classes of memory errors**
+
+For complete details, see the dedicated memory safety documentation:
+- [WRAPPER_OWNERSHIP_PATTERN.md](WRAPPER_OWNERSHIP_PATTERN.md)
+- [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md)
+- [OPTION_B_IMPLEMENTATION_GUIDE.md](OPTION_B_IMPLEMENTATION_GUIDE.md)
+
+---
+
 ## VII. Summary: Data Flow Example
 
 ### Complete Example Walkthrough: `cpp.enemies[0].health = 50`

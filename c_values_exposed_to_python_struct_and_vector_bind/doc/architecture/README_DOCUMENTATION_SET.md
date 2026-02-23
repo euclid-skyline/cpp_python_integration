@@ -77,9 +77,29 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 
 ---
 
-### Issue 26 Solution Documents (3 documents for vector element proxy safety)
+### Issue 18 & 26 Solution Documents (4 documents for ownership and safety)
 
-**Document 5: VECTOR_ELEMENT_PROXY_INVALIDATION.md** – The "Problem" Document
+**Document 5: SCALAR_VS_COMPLEX_OWNERSHIP.md** – Ownership Comparison
+- ✅ Why scalars don't have Issue 18 double-free problem
+- ✅ Ownership differences between scalars, structs, and vectors
+- ✅ Copy-on-access design for scalars (inherently safe)
+- ✅ Shared ownership vulnerability in complex types (before fix)
+- ✅ Wrapper ownership pattern solution (Issue 18 fix)
+- ✅ Parent tracking for vector element safety (Issue 26 fix)
+- ✅ Comparison matrix of ownership models
+- ✅ Practical examples with safe patterns
+- ✅ Root cause analysis of Issue 18
+- ✅ Memory safety invariants and guarantees
+- ✅ Access flow diagrams for all three types
+- ✅ Three-tier memory safety strategy
+
+**Best For:** Understanding why different types needed different safety fixes
+
+---
+
+### Vector Element Proxy Safety Documents (3 documents for Issue 26 detailed analysis)
+
+**Document 6: VECTOR_ELEMENT_PROXY_INVALIDATION.md** – The "Problem" Document
 - ✅ Detailed analysis of the raw pointer invalidation issue
 - ✅ Why std::vector reallocation makes element pointers invalid
 - ✅ Concrete example with memory diagrams before/after reallocation
@@ -92,7 +112,7 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 
 ---
 
-**Document 6: OPTION_B_IMPLEMENTATION_GUIDE.md** – The "Solution" Document
+**Document 7: OPTION_B_IMPLEMENTATION_GUIDE.md** – The "Solution" Document
 - ✅ Complete architecture for parent tracking (index + parent instead of raw pointer)
 - ✅ Updated BoundStruct and BoundVector with parent constructors
 - ✅ Lazy resolution in instance() and raw_vector() methods
@@ -103,6 +123,8 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 - ✅ Backwards compatibility notes (zero Python API changes)
 
 **Best For:** Understanding how Option B was implemented and why it works
+
+---
 
 ---
 
@@ -121,9 +143,11 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 
 ---
 
-### Supporting Documentation (2 additional documents)
+### Supporting Documentation (3 additional documents)
 
-**Document 8: USAGE_GUIDE.md** – Python API Reference
+---
+
+**Document 9: USAGE_GUIDE.md** – Python API Reference
 - ✅ Complete Python API documentation
 - ✅ Basic field and vector operations
 - ✅ Nested structures and vectors
@@ -136,7 +160,7 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 
 ---
 
-**Document 9: WRAPPER_OWNERSHIP_PATTERN.md** – Proxy Ownership Semantics
+**Document 10: WRAPPER_OWNERSHIP_PATTERN.md** – Proxy Ownership Semantics
 - ✅ Double-free prevention through wrapper ownership
 - ✅ When wrappers own vs. reference objects
 - ✅ Comparison with alternative patterns

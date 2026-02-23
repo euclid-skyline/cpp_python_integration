@@ -172,24 +172,108 @@ Core flow:
   - Describe fields by name, offset, type, and metadata.
 - `BoundStruct`
   - Wraps a struct instance and provides field access.
+  - **Memory Safety Feature:** Includes parent tracking (m_parent_vector, m_parent_index) to prevent use-after-free when struct is vector element.
 - `BoundStruct::get_field()` and `get_field_ptr()`
   - Resolves fields dynamically.
+  - Uses `get_instance_ptr()` for safe parent resolution.
 
 **Design perspective:**
 - Uses offset-based access for speed and flexibility.
 - Allows nested metadata (structs and vectors inside structs).
+- **Implements Issue #26 fix:** Parent tracking prevents proxy invalidation after vector reallocation.
 
 ---
 
-## 3) Design Perspective and Tradeoffs
+### [reflection_vector.hpp](reflection_vector.hpp)
+**Purpose:** Vector reflection metadata and dynamic access.
+
+**Key types and functions:**
+- `VectorInfo`
+  - Metadata describing vector element type and operations (size, element access, append).
+- `BoundVector`
+  - Wraps a vector instance and provides type-erased access.
+- `BoundVector::element_ptr(index)`
+  - Returns fresh pointer to element at current memory location.
+  - **Critical for Issue #26 fix:** Always resolves current pointer, safe after reallocation.
+
+**Design perspective:**
+- Function pointers enable type-agnostic vector operations.
+- Works with any std::vector<T> without template instantiation in reflection layer.
+
+---
+
+## 3) Memory Safety Architecture
+
+The system implements two critical safety patterns that eliminate memory corruption bugs:
+
+### Pattern 1: Wrapper Ownership (Issue #18 Fix)
+
+**Problem Prevented:** Double-free when multiple Python proxies reference same C++ object.
+
+**Implementation:**
+- Registry (`PyInterface::g_values`) stores master wrappers
+- Each proxy gets **copy** of wrapper via copy constructor
+- Wrapper contains pointers to shared data (void *m_instance)
+- Cleanup deletes wrapper copy, not underlying C++ data
+
+**Key Files:**
+- [python_proxy.cpp](python_proxy.cpp) - `StructProxy_New()` creates wrapper copy
+- [value_interface.cpp](value_interface.cpp) - Registry stores master wrappers
+
+**Result:** Multiple proxies → multiple wrapper copies → no double-free
+
+**See:** [WRAPPER_OWNERSHIP_PATTERN.md](../architecture/WRAPPER_OWNERSHIP_PATTERN.md)
+
+---
+
+### Pattern 2: Parent Tracking (Issue #26 Fix)
+
+**Problem Prevented:** Use-after-free when vector reallocates and element proxies hold dangling pointers.
+
+**Implementation:**
+- Vector element proxies store parent container + index (not raw pointer)
+- Field access calls `get_instance_ptr()` which:
+  - Checks if parent exists
+  - Resolves fresh pointer from parent via `element_ptr(index)`
+  - Returns current memory location (safe after reallocation)
+
+**Key Files:**
+- [reflection_struct.hpp](reflection_struct.hpp) - BoundStruct parent tracking members
+- [reflection_vector.hpp](reflection_vector.hpp) - BoundVector::element_ptr() dynamic resolution
+- [python_proxy.cpp](python_proxy.cpp) - VectorProxy_getitem() sets parent/index
+
+**Result:** Vector can reallocate → proxies always resolve valid pointer → no use-after-free
+
+**See:** 
+- [VECTOR_ELEMENT_PROXY_INVALIDATION.md](../architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md)
+- [OPTION_B_IMPLEMENTATION_GUIDE.md](../architecture/OPTION_B_IMPLEMENTATION_GUIDE.md)
+
+---
+
+### Circular Dependency Resolution
+
+**Challenge:** BoundStruct needs BoundVector for parent tracking, but headers must avoid circular includes.
+
+**Solution:** Two-phase include pattern
+1. Forward declare BoundVector (incomplete type for pointer member)
+2. Defer method definitions until after #include "reflection_vector.hpp"
+
+**Key File:** [reflection_struct.hpp](reflection_struct.hpp)
+
+**See:** [CIRCULAR_DEPENDENCY_RESOLUTION.md](../architecture/CIRCULAR_DEPENDENCY_RESOLUTION.md)
+
+---
+
+## 4) Design Perspective and Tradeoffs
 
 - **Type erasure through metadata** keeps proxy code generic, avoiding templates in Python-facing layers.
 - **Explicit ownership**: Proxies own wrappers (`BoundStruct`/`BoundVector`) but not underlying C++ data.
 - **Zero-copy**: Operations modify C++ data in place.
 - **Manual memory control** for nested vectors: placement-new and explicit cleanup prevent type mismatch issues.
 - **Compatibility**: Configuration supports system, bundled, and zip-based Python for portability.
+- **Memory safety**: Wrapper ownership and parent tracking eliminate double-free and use-after-free bugs with minimal overhead (24 bytes/proxy, 1-2 CPU cycles/access).
 
-## 4) Known Limitations (Behavioral)
+## 5) Known Limitations (Behavioral)
 
 - No slicing support for vectors (`vec[1:3]`).
 - No custom index support (`__index__` protocol).

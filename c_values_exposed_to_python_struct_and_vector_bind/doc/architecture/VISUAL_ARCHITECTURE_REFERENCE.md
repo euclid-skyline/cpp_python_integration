@@ -158,6 +158,110 @@ KEY: Python never copies player data!
 
 ---
 
+## Memory Safety Architecture
+
+### Pattern 1: Wrapper Ownership (Issue #18 Fix)
+
+**Prevents: Double-Free**
+
+```
+Registry (single master):
+┌────────────────────────────────┐
+│ g_values["player"] = BS*       │ ← Master wrapper
+└────────────────────────────────┘
+         │
+         ├──────────────┬──────────────┐
+         ↓              ↓              ↓
+   ┌─────────┐    ┌─────────┐    ┌─────────┐
+   │ Proxy 1 │    │ Proxy 2 │    │ Proxy 3 │
+   │ bound*──┤    │ bound*──┤    │ bound*──┤
+   │ (COPY)  │    │ (COPY)  │    │ (COPY)  │
+   └─────────┘    └─────────┘    └─────────┘
+       │              │              │
+       │              │              │
+       └──────────────┴──────────────┘
+                      ↓
+         All copies point to SAME data:
+         ┌─────────────────────┐
+         │ Player player {...} │ ← C++ memory
+         └─────────────────────┘
+
+Cleanup: Each proxy deletes its OWN wrapper copy
+         Original C++ data UNAFFECTED
+         ✓ No double-free
+```
+
+### Pattern 2: Parent Tracking (Issue #26 Fix)
+
+**Prevents: Use-After-Free on Vector Reallocation**
+
+```
+Before reallocation:
+┌──────────────────────────┐
+│ std::vector<Player>      │
+│ data: 0x1000             │
+│ [0] Player {100, "Alice"}│ ← Element at 0x1000
+│ [1] Player {80, "Bob"}   │
+└──────────────────────────┘
+         ↑
+         │
+    ┌────────────────────────┐
+    │ StructProxy (enemy0)   │
+    │  m_parent_vector: &vec │ ← Stores PARENT, not pointer
+    │  m_parent_index: 0     │
+    └────────────────────────┘
+
+After push_back (reallocation):
+Old memory: 0x1000 FREED ❌
+
+┌──────────────────────────┐
+│ std::vector<Player>      │
+│ data: 0x2000  ← NEW      │
+│ [0] Player {100, "Alice"}│ ← Element at 0x2000 (moved!)
+│ [1] Player {80, "Bob"}   │
+│ [2] Player {90, "Eve"}   │ ← Newly added
+└──────────────────────────┘
+         ↑
+         │ Dynamic resolution!
+         │
+    ┌────────────────────────┐
+    │ Python: enemy0.health  │
+    │   ↓                    │
+    │ get_instance_ptr()     │
+    │   ↓                    │
+    │ m_parent_vector->      │
+    │   element_ptr(0)       │
+    │   ↓                    │
+    │ Returns 0x2000         │ ← FRESH pointer (safe!)
+    └────────────────────────┘
+
+KEY: Proxies store parent + index
+     Field access resolves fresh pointer
+     ✓ Always valid after reallocation
+```
+
+### Safety Cost Analysis
+
+```
+┌──────────────────────┬──────────┬─────────┬─────────────────┐
+│ Safety Feature       │ Memory   │ CPU     │ Bugs Prevented  │
+├──────────────────────┼──────────┼─────────┼─────────────────┤
+│ Wrapper ownership    │ 16 bytes │ None    │ Double-free     │
+│ Parent tracking      │ 16 bytes │ 1 indir │ Use-after-free  │
+├──────────────────────┼──────────┼─────────┼─────────────────┤
+│ TOTAL per proxy      │ 32 bytes │ ~2 cyc  │ ALL corruption  │
+└──────────────────────┴──────────┴─────────┴─────────────────┘
+
+Trade-off: TRIVIAL overhead for COMPLETE memory safety
+```
+
+**See:**
+- [WRAPPER_OWNERSHIP_PATTERN.md](WRAPPER_OWNERSHIP_PATTERN.md)
+- [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md)
+- [OPTION_B_IMPLEMENTATION_GUIDE.md](OPTION_B_IMPLEMENTATION_GUIDE.md)
+
+---
+
 ## Type Detection: Compile-Time Branching
 
 ```
