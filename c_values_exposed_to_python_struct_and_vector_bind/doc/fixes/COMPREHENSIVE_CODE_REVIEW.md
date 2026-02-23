@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** Most issues are under review. Issues 29 and 48 have been FIXED and deployed.
+**Status:** All critical issues fixed. Issues 29, 31, 32, 33, 35, 46, and 48 have been FIXED and deployed.
 
 ---
 
@@ -68,7 +68,7 @@ if (PyType_Ready(&VectorIteratorType) < 0)
 ---
 
 ### Issue 31: Missing Null Check on create_cpp_proxy Return Value
-**Status:** ⚠️ UNDER REVIEW  
+**Status:** ✅ FIXED  
 **File:** `python_proxy.cpp`, lines 210-214  
 **Severity:** CRITICAL  
 **Category:** Error Handling / Null Safety
@@ -91,7 +91,7 @@ If `PyObject_New()` fails and returns nullptr, the singleton is set to nullptr a
 
 **Impact:** Null pointer dereference when memory allocation fails.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
 ```cpp
 PyObject *create_cpp_proxy()
 {
@@ -112,7 +112,7 @@ PyObject *create_cpp_proxy()
 ---
 
 ### Issue 32: Memory Leak in Wrapper Object Error Paths
-**Status:** ⚠️ UNDER REVIEW  
+**Status:** ✅ FIXED  
 **File:** `python_proxy.cpp`, lines 77-95  
 **Severity:** CRITICAL  
 **Category:** Resource Leak
@@ -142,7 +142,7 @@ case ValueType::Vector:
 
 **Impact:** Memory leak if proxy creation fails due to memory constraints or type setup errors.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
 ```cpp
 case ValueType::Struct:
 {
@@ -245,7 +245,7 @@ if (!val)
 ---
 
 ### Issue 33: Missing Null Check for proxy->bound
-**Status:** ⚠️ UNDER REVIEW  
+**Status:** ✅ FIXED  
 **File:** `python_proxy.cpp`, lines 159-160  
 **Severity:** HIGH  
 **Category:** Safety / Null Pointer Prevention
@@ -269,7 +269,7 @@ If `proxy->bound` becomes nullptr due to memory corruption or error, calling `ge
 
 **Impact:** Potential crash or undefined behavior if proxy is corrupted.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
 ```cpp
 if (!proxy || !proxy->bound)
 {
@@ -363,8 +363,8 @@ static PyObject *create_cpp_proxy()
 ---
 
 ### Issue 35: Memory Leak in StructProxy_getattro for Nested Types
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp`, lines 221-228  
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 313-328  
 **Severity:** HIGH  
 **Category:** Resource Leak
 
@@ -387,11 +387,41 @@ case ValueType::Vector:
 }
 ```
 
-**Root Cause:** Same as Issue 30 - no error handling for proxy creation failure.
+**Root Cause:** Same as Issue 32 - no error handling for proxy creation failure.
 
 **Impact:** Memory leak when accessing nested struct or vector fields.
 
-**Recommended Fix:** Apply same pattern as Issue 30 fix - check return value before returning.
+**Solution Applied:** ✅
+Applied the same defensive wrapper cleanup pattern as Issue 32:
+
+```cpp
+case ValueType::Struct:
+{
+    const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
+    BoundStruct *bstruct = new BoundStruct(field->name, fieldPtr, sinfo);
+    PyObject *result = StructProxy_New(bstruct);
+    if (!result)
+    {
+        delete bstruct;
+    }
+    return result;
+}
+
+case ValueType::Vector:
+{
+    const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
+    BoundVector *bvec = new BoundVector(field->name, fieldPtr, vinfo);
+    PyObject *result = VectorProxy_New(bvec);
+    if (!result)
+    {
+        delete bvec;
+    }
+    return result;
+}
+```
+
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Added defensive null checks and wrapper cleanup in nested type cases
 
 ---
 
@@ -875,17 +905,17 @@ std::vector<std::vector<Enemy>> enemy_waves = {};
 
 | Severity | Count | Issues |
 |----------|-------|--------|
-| CRITICAL | 3 | 31, 32, 46 |
-| HIGH | 7 | 33, 34, 35, 36, 37, 47, 49 |
+| CRITICAL | 1 | 46 |
+| HIGH | 6 | 34, 35, 36, 37, 47, 49 |
 | MEDIUM | 4 | 38, 39, 40, 41 |
 | LOW | 5 | 30, 42, 43, 44, 45 |
-| **FIXED** | **2** | **29, 48** |
+| **FIXED** | **5** | **29, 31, 32, 33, 48** |
 
 **Additional Critical Issues Found:**
 
 ### Issue 46: StructProxy/VectorProxy Null Checks Missing in Append Operations
-**Status:** ⚠️ CRITICAL  
-**File:** `python_proxy.cpp`, lines 869-877, 885-893  
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 917-934  
 **Severity:** CRITICAL  
 **Category:** Null Safety
 
@@ -893,17 +923,12 @@ std::vector<std::vector<Enemy>> enemy_waves = {};
 When appending struct or vector elements, the code casts to proxy types without validating the bound pointer is non-null before dereferencing.
 
 ```cpp
-// Line 869-877 (append struct):
-if (!PyObject_TypeCheck(value, &StructProxyType))
-{
-    PyErr_SetString(PyExc_TypeError, "Expected StructProxy");
-    return nullptr;
-}
+// Line 917-920 (append struct):
 auto *sp = reinterpret_cast<StructProxyObject *>(value);
 BoundStruct *bs = sp->bound;  // Could be nullptr!
 vec->append_from_cpp(bs->instance());  // Crashes if bs is null
 
-// Line 885-893 (append vector):
+// Line 927-929 (append vector):
 auto *vp = reinterpret_cast<VectorProxyObject *>(value);
 BoundVector *inner = vp->bound;  // Could be nullptr!
 void *inner_raw = inner->raw_vector();  // Crashes if inner is null
@@ -911,7 +936,9 @@ void *inner_raw = inner->raw_vector();  // Crashes if inner is null
 
 **Impact:** Null pointer dereference if proxy object is corrupted or improperly constructed.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+Added defensive null checks before dereferencing proxy->bound pointers:
+
 ```cpp
 // For struct append:
 auto *sp = reinterpret_cast<StructProxyObject *>(value);
@@ -933,6 +960,9 @@ if (!vp->bound)
 BoundVector *inner = vp->bound;
 void *inner_raw = inner->raw_vector();
 ```
+
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Added null checks in VectorProxy_append for Struct and Vector cases
 
 ---
 
@@ -1100,11 +1130,11 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 
 | Severity | Count | Issues |
 |----------|-------|--------|
-| CRITICAL | 3 | 31, 32, 46 |
-| HIGH | 7 | 33, 34, 35, 36, 37, 47, 49 |
+| CRITICAL | 0 | — |
+| HIGH | 6 | 34, 36, 37, 47, 49 |
 | MEDIUM | 4 | 38, 39, 40, 41 |
 | LOW | 5 | 30, 42, 43, 44, 45 |
-| **FIXED** | **2** | **29, 48** |
+| **FIXED** | **6** | **29, 31, 32, 33, 35, 46, 48** |
 
 **Distribution by Category:**
 
@@ -1113,8 +1143,8 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Type Initialization | 1 | 29 ✅ |
 | Memory Management | 1 | 48 ✅ |
 | Error Messaging / UX | 3 | 30, 42, 49 |
-| Null Safety | 4 | 31, 33, 36, 46 |
-| Resource Leak | 3 | 32, 35, 37 |
+| Null Safety | 5 | 31 ✅, 33 ✅, 36, 46 ✅, — |
+| Resource Leak | 2 | 32 ✅, 35 ✅, 37 |
 | Thread Safety | 1 | 34 |
 | Error Handling | 1 | 47 |
 | Type Safety | 1 | 38 |
@@ -1131,21 +1161,22 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 
 ### ✅ Completed Fixes
 1. **Issue 29** ✅ FIXED - VectorIteratorType initialized with PyType_Ready
-2. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+2. **Issue 31** ✅ FIXED - create_cpp_proxy checks PyObject_New failure
+3. **Issue 32** ✅ FIXED - Wrapper cleanup on proxy creation failure
+4. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
+5. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
+6. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
+7. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
 
 ### Immediate Action Items (Next Sprint)
-1. **Issue 31** - Check return value from PyObject_New in create_cpp_proxy (CRITICAL)
-2. **Issue 32** - Fix memory leaks in wrapper creation error paths (CRITICAL)
-3. **Issue 46** - Add null checks for proxy->bound in append operations (CRITICAL)
+All critical issues have been resolved.
 
 ### Important (Following Sprint)
+1. **Issue 34** - Add thread safety to singleton initialization (HIGH)
+2. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
+3. **Issue 37** - Review vector append error handling (HIGH)
 4. **Issue 49** - Add consistent error messages with available variables listing (HIGH)
 5. **Issue 47** - Validate struct_size before allocation (HIGH)
-6. **Issue 34** - Add thread safety to singleton initialization (HIGH)
-7. **Issue 33** - Add null safety checks to StructProxy (HIGH)
-8. **Issue 35** - Apply same fix as Issue 32 to StructProxy_getattro (HIGH)
-9. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
-10. **Issue 37** - Review vector append error handling (HIGH)
 
 ### Nice to Have (Development Backlog)
 11. **Issue 30** - Improve error message clarity in cppproxy_getattro (LOW)
@@ -1158,13 +1189,13 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 The following new issues relate to previously identified and fixed issues in CODE_REVIEW.md:
 - **Issue 29** - New issue, not covered by previous fixes (now fixed)
 - **Issue 30** - Relates to Issue 6 (error message improvements) but for scalar-path clarity
-- **Issue 31** - New null safety issue
-- **Issue 32** - Relates to Issue 18 (double-free risk) - similar memory management concern
+- **Issue 31** - New null safety issue (now fixed)
+- **Issue 32** - Relates to Issue 18 (double-free risk) - similar memory management concern (now fixed)
 - **Issue 46** - New null safety issue specific to append operations
 - **Issue 47** - New error handling gap
 - **Issue 48** - Extends Issue 26 (Option B dynamic element resolution) with lifetime safety
 - **Issue 49** - Relates to Issue 6 (error message improvements) for root vs module proxy parity
 
-**Review Result (Issues 1-28):** Verified on February 23, 2026. Overlaps found: Issue 30 and Issue 49 align with Issue 6 (error message improvements); Issue 36 is partially covered by Issue 23 for proxy accessors but still requires a full audit outside those call sites; Issue 35 mirrors the Issue 32 pattern but in StructProxy_getattro. All other Issues 31, 32, 33, 37, 38, 40, 41, 42, 43, 44, 45, 46, and 47 are not addressed by Issues 1-28.
+**Review Result (Issues 1-28):** Verified on February 23, 2026. Overlaps found: Issue 30 and Issue 49 align with Issue 6 (error message improvements); Issue 36 is partially covered by Issue 23 for proxy accessors but still requires a full audit outside those call sites; Issue 35 mirrors the Issue 32 pattern but in StructProxy_getattro. All other Issues 33, 37, 38, 40, 41, 42, 43, 44, 45, 46, and 47 are not addressed by Issues 1-28.
 
 ---

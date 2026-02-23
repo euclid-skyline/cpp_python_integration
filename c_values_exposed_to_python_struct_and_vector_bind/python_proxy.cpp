@@ -266,6 +266,12 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
 {
     StructProxyObject *proxy = (StructProxyObject *)self;
 
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: StructProxy has null BoundStruct");
+        return nullptr;
+    }
+
     const char *name = PyUnicode_AsUTF8(attr);
     if (!name)
     {
@@ -304,14 +310,24 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
         BoundStruct *bstruct = new BoundStruct(field->name, fieldPtr, sinfo);
-        return StructProxy_New(bstruct);
+        PyObject *result = StructProxy_New(bstruct);
+        if (!result)
+        {
+            delete bstruct;
+        }
+        return result;
     }
 
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
         BoundVector *bvec = new BoundVector(field->name, fieldPtr, vinfo);
-        return VectorProxy_New(bvec);
+        PyObject *result = VectorProxy_New(bvec);
+        if (!result)
+        {
+            delete bvec;
+        }
+        return result;
     }
 
     default:
@@ -898,6 +914,11 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
             return nullptr;
         }
         auto *sp = reinterpret_cast<StructProxyObject *>(value);
+        if (!sp->bound)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "StructProxy has null BoundStruct");
+            return nullptr;
+        }
         BoundStruct *bs = sp->bound;
         vec->append_from_cpp(bs->instance());
         break;
@@ -914,6 +935,11 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
             return nullptr;
         }
         auto *vp = reinterpret_cast<VectorProxyObject *>(value);
+        if (!vp->bound)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "VectorProxy has null BoundVector");
+            return nullptr;
+        }
         BoundVector *inner = vp->bound;
         void *inner_raw = inner->raw_vector();
         vec->append_from_cpp(inner_raw); // FIXED: pass pointer directly, not address
