@@ -2,8 +2,11 @@
 #include <vector> // std::vector
 #include <string> // std::string
 
-#include "reflection_value.hpp"  // BoundValue, ValueType
-#include "reflection_struct.hpp" // BoundStruct, StructInfo
+#include "reflection_value.hpp" // BoundValue, ValueType
+
+// Forward declaration - full definition may be in another header
+class BoundStruct;
+struct StructInfo;
 
 // ---------------------------------------------------------
 // BoundVector
@@ -27,37 +30,58 @@ struct VectorInfo
 class BoundVector : public BoundValue
 {
 public:
+    // Constructor for standalone vectors (not from vector)
     BoundVector(const std::string &name, void *vec_ptr, const VectorInfo *info)
+        : m_vec_ptr(vec_ptr), m_info(info), m_parent_vector(nullptr), m_element_index(0)
     {
         this->name = name;
         this->type = ValueType::Vector;
-        m_vec_ptr = vec_ptr;
-        m_info = info;
+    }
+
+    // Constructor for nested vectors (element of another vector) - parent tracking
+    BoundVector(const std::string &name, BoundVector *parent, std::size_t index, const VectorInfo *info)
+        : m_vec_ptr(nullptr), m_info(info), m_parent_vector(parent), m_element_index(index)
+    {
+        this->name = name;
+        this->type = ValueType::Vector;
     }
 
     // Reflection helpers
     std::size_t size() const
     {
-        return m_info->size_fn ? m_info->size_fn(m_vec_ptr) : 0;
+        return m_info->size_fn ? m_info->size_fn(raw_vector()) : 0;
     }
 
     void *element_ptr(std::size_t index) const
     {
-        return m_info->element_ptr_fn ? m_info->element_ptr_fn(m_vec_ptr, index) : nullptr;
+        return m_info->element_ptr_fn ? m_info->element_ptr_fn(raw_vector(), index) : nullptr;
     }
 
     const VectorInfo *info() const { return m_info; }
-    void *raw_vector() const { return m_vec_ptr; }
+
+    void *raw_vector() const
+    {
+        if (m_parent_vector)
+        {
+            // Nested vector: resolve from parent
+            return m_parent_vector->element_ptr(m_element_index);
+        }
+        return m_vec_ptr; // Top-level vector
+    }
 
     // ------------------------------------------------------------
     // append() — required by VectorProxy
     // ------------------------------------------------------------
     bool append_from_cpp(void *value_ptr)
     {
-        return m_info->append_fn ? m_info->append_fn(m_vec_ptr, value_ptr) : false;
+        return m_info->append_fn ? m_info->append_fn(raw_vector(), value_ptr) : false;
     }
 
 private:
-    void *m_vec_ptr;          // pointer to std::vector<T>
+    void *m_vec_ptr;          // pointer to std::vector<T> (for top-level vectors)
     const VectorInfo *m_info; // element type metadata
+
+    // For nested vectors (Issue 26 fix)
+    BoundVector *m_parent_vector; // nullptr if top-level
+    std::size_t m_element_index;  // Valid only if m_parent_vector != nullptr
 };

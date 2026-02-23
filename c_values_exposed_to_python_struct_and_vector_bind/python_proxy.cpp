@@ -533,14 +533,24 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     case ValueType::Struct:
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
-        BoundStruct *bstruct = new BoundStruct(proxy->bound->name, elemPtr, sinfo);
+        // Use parent + index constructor instead of raw pointer (Issue 26 fix)
+        BoundStruct *bstruct = new BoundStruct(
+            proxy->bound->name,
+            proxy->bound,                    // Parent vector
+            static_cast<std::size_t>(index), // Element index
+            sinfo);
         return StructProxy_New(bstruct);
     }
 
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(info->element_meta);
-        BoundVector *bvec = new BoundVector(proxy->bound->name, elemPtr, vinfo);
+        // Use parent + index constructor instead of raw pointer (Issue 26 fix)
+        BoundVector *bvec = new BoundVector(
+            proxy->bound->name,
+            proxy->bound,                    // Parent vector
+            static_cast<std::size_t>(index), // Element index
+            vinfo);
         return VectorProxy_New(bvec);
     }
 
@@ -671,7 +681,6 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
 
     // Get the last element (the one we just added)
     std::size_t last_idx = vec->size() - 1;
-    void *elemPtr = vec->element_ptr(last_idx);
 
     // Clean up temporary allocation
     // Destroy string fields before freeing
@@ -685,8 +694,8 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     }
     ::operator delete(new_instance);
 
-    // Return a proxy to the newly added element
-    BoundStruct *bstruct = new BoundStruct(vec->name, elemPtr, sinfo);
+    // Return a proxy to the newly added element (using parent + index for Issue 26 fix)
+    BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);
     return StructProxy_New(bstruct);
 }
 
@@ -771,10 +780,9 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
 
     // Get the last element (the one we just added)
     std::size_t last_idx = vec->size() - 1;
-    void *elemPtr = vec->element_ptr(last_idx);
 
-    // Return a proxy to the newly added inner vector
-    BoundVector *bvec = new BoundVector(vec->name, elemPtr, inner_info);
+    // Return a proxy to the newly added inner vector (using parent + index for Issue 26 fix)
+    BoundVector *bvec = new BoundVector(vec->name, vec, last_idx, inner_info);
     return VectorProxy_New(bvec);
 }
 

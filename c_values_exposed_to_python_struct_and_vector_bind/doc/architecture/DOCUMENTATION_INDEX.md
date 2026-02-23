@@ -91,6 +91,102 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+### 5. **VECTOR_ELEMENT_PROXY_INVALIDATION.md** – ISSUE 26 ANALYSIS
+**Purpose:** Detailed problem analysis with memory diagrams  
+**Reading Time:** 20-30 minutes  
+**Best For:** Understanding the vector reallocation safety issue and solution options
+
+**Covers:**
+- Problem: Raw pointers dangling after vector reallocation
+- Concrete example with memory diagrams
+- Three solution options compared (documentation, dynamic resolution, prevention)
+- Option B (chosen): Dynamic element resolution pattern
+- Real-world test cases demonstrating the issue
+- Visual memory layout before/after reallocation
+
+**Key Insights:**
+- Why `std::vector` reallocation invalidates element pointers
+- Trade-offs between the three solutions
+- How Option B maintains proxy validity across reallocations
+
+---
+
+### 6. **OPTION_B_IMPLEMENTATION_GUIDE.md** – ISSUE 26 IMPLEMENTATION
+**Purpose:** Complete implementation guide for parent tracking and dynamic resolution  
+**Reading Time:** 25-35 minutes  
+**Best For:** Understanding how proxies safely resolve elements after reallocation
+
+**Covers:**
+- Architecture changes to `BoundStruct` and `BoundVector`
+- Parent tracking constructor pattern (index + parent instead of raw pointer)
+- Lazy resolution in `instance()` and `raw_vector()` methods
+- Updates to proxy creation sites (VectorProxy_getitem, append_new, etc.)
+- **Circular dependency resolution strategy** (see Section: Circular Dependency Resolution)
+- Testing approach with 3 concrete test cases
+- Performance characteristics (single pointer dereference overhead)
+- Backwards compatibility (zero Python API changes)
+
+**Key Sections:**
+- 6 specific code changes with before/after examples
+- How to implement parent-aware constructors
+- When to use parent vs. standalone constructors
+- Performance overhead analysis
+
+---
+
+### 7. **CIRCULAR_DEPENDENCY_RESOLUTION.md** – HEADER ARCHITECTURE PATTERN
+**Purpose:** Detailed explanation of circular dependency handling in Option B  
+**Reading Time:** 20-25 minutes  
+**Best For:** Understanding header include patterns and why Option B works
+
+**Covers:**
+- The circular dependency problem explained step-by-step
+- Why naive include patterns fail
+- Two-phase include strategy in detail
+- Why forward declarations work for pointers
+- When to declare methods vs. implement them
+- Include order timeline showing when types become available
+- Comparison with alternative approaches (circular headers, separate impl files, etc.)
+- Guidelines for future development when adding features
+
+**Key Insights:**
+- Header architecture: declaration phase 1, implementation phase 2
+- Inline implementation deferred until both types fully defined
+- Pattern used in STL containers and modern C++ libraries
+- Maintains compile-time safety while enabling cross-class method calls
+
+---
+
+### 8. **USAGE_GUIDE.md** – PYTHON API REFERENCE
+**Purpose:** Complete Python API documentation  
+**Reading Time:** 15-20 minutes  
+**Best For:** Users of the Python binding
+
+**Covers:**
+- Basic field and vector operations  
+- Nested structures and vectors
+- Iteration support (for loops)
+- Type conversions and error handling
+- Complete working examples
+- Safe patterns for vector operations
+
+---
+
+### 9. **WRAPPER_OWNERSHIP_PATTERN.md** – OWNERSHIP SEMANTICS
+**Purpose:** Explains wrapper ownership to prevent double-free  
+**Reading Time:** 15-20 minutes  
+**Best For:** Understanding proxy ownership semantics (Issue 18 fix)
+
+**Covers:**
+- Double-free problem in proxy chains  
+- Wrapper ownership pattern solution
+- When wrappers own vs. reference
+- Comparison with alternative patterns
+- Memory diagram examples
+- Nested proxy safety
+
+---
+
 ## 🎯 Reading Paths Based on Your Goals
 
 ### Path 1: "I want to understand the architecture"
@@ -397,9 +493,14 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 | FUNCTION_REFERENCE.md | ~950 | Functions, data flows, examples | 40-50 min |
 | DESIGN_PATTERNS_AND_EXTENSIBILITY.md | ~900 | Patterns, trade-offs, extension | 25-35 min |
 | SOURCE_CODE_DOCUMENTATION.md | ~230 | File reference, quick lookup | 20-30 min |
-| **Total** | **~2930** | **Comprehensive coverage** | **2-3 hours** |
+| VECTOR_ELEMENT_PROXY_INVALIDATION.md | ~450 | Issue 26 problem & solution options | 20-30 min |
+| OPTION_B_IMPLEMENTATION_GUIDE.md | ~490 | Issue 26 implementation details | 25-35 min |
+| CIRCULAR_DEPENDENCY_RESOLUTION.md | ~480 | Header architecture pattern | 20-25 min |
+| USAGE_GUIDE.md | ~350 | Python API reference | 15-20 min |
+| WRAPPER_OWNERSHIP_PATTERN.md | ~280 | Proxy ownership semantics | 15-20 min |
+| **Total** | **~5580** | **Comprehensive coverage** | **4-5 hours** |
 
-**Recommended approach:** Read over 2-3 days to allow concepts to solidify.
+**Recommended approach:** Read over 3-4 days to allow concepts to solidify.
 
 ---
 
@@ -422,11 +523,24 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 - FUNCTION_REFERENCE.md III-IV
 - ARCHITECTURE_DEEP_DIVE.md IV
 - SOURCE_CODE_DOCUMENTATION.md (python_proxy.cpp)
+- WRAPPER_OWNERSHIP_PATTERN.md (proxy ownership)
+
+**Vector Safety & Issue 26:**
+- VECTOR_ELEMENT_PROXY_INVALIDATION.md (problem analysis)
+- OPTION_B_IMPLEMENTATION_GUIDE.md (implementation)
+- CIRCULAR_DEPENDENCY_RESOLUTION.md (header architecture)
+- CODE_REVIEW.md in fixes/ (status tracking)
 
 **Type Conversion:**
 - FUNCTION_REFERENCE.md V
 - SOURCE_CODE_DOCUMENTATION.md (python_bind.hpp)
 - DESIGN_PATTERNS_AND_EXTENSIBILITY.md V (pitfalls)
+- USAGE_GUIDE.md (Python API examples)
+
+**Header Architecture:**
+- CIRCULAR_DEPENDENCY_RESOLUTION.md (circular includes pattern)
+- OPTION_B_IMPLEMENTATION_GUIDE.md (Circular Dependency Resolution section)
+- reflection_struct.hpp and reflection_vector.hpp (implementation)
 
 **Extension & Customization:**
 - DESIGN_PATTERNS_AND_EXTENSIBILITY.md III
