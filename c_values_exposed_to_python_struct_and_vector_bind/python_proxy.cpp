@@ -704,6 +704,13 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     // Calculate struct size using helper function
     std::size_t struct_size = calculate_struct_size(sinfo);
 
+    // Validate that struct size is non-zero
+    if (struct_size == 0)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Cannot append struct with zero size");
+        return nullptr;
+    }
+
     // Allocate zero-initialized memory for the struct
     void *new_instance = ::operator new(struct_size);
     std::memset(new_instance, 0, struct_size);
