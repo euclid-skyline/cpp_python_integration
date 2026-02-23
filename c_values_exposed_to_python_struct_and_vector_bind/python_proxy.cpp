@@ -87,10 +87,22 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
     switch (val->type)
     {
     case ValueType::Struct:
-        return StructProxy_New(static_cast<BoundStruct *>(val));
+    {
+        auto *bs = static_cast<BoundStruct *>(val);
+        // Create a wrapper that the proxy can own and delete safely
+        // This prevents double-free: g_values owns original, proxy owns wrapper
+        BoundStruct *wrapper = new BoundStruct(bs->name, bs->instance(), bs->info());
+        return StructProxy_New(wrapper);
+    }
 
     case ValueType::Vector:
-        return VectorProxy_New(static_cast<BoundVector *>(val));
+    {
+        auto *bv = static_cast<BoundVector *>(val);
+        // Create a wrapper that the proxy can own and delete safely
+        // This prevents double-free: g_values owns original, proxy owns wrapper
+        BoundVector *wrapper = new BoundVector(bv->name, bv->raw_vector(), bv->info());
+        return VectorProxy_New(wrapper);
+    }
 
     default:
         // For scalar types, use PyBoundValue interface
