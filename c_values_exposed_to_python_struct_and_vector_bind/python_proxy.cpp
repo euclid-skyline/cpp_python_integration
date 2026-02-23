@@ -952,7 +952,7 @@ static PyObject *VectorIterator_next(PyObject *self)
 }
 
 // VectorIterator type definition
-static PyTypeObject VectorIteratorType = {
+PyTypeObject VectorIteratorType = {
     PyVarObject_HEAD_INIT(nullptr, 0) "cpp.VectorIterator", // tp_name
     sizeof(VectorIteratorObject),                           // tp_basicsize
     0,                                                      // tp_itemsize
