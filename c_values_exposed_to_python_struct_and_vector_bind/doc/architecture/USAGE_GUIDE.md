@@ -18,6 +18,7 @@
 9. [Complete Examples](#complete-examples)
 10. [Performance Characteristics](#performance-characteristics)
 11. [Memory Management](#memory-management)
+11.1. [Wrapper Ownership Pattern](#wrapper-ownership-pattern)
 12. [Thread Safety](#thread-safety)
 13. [Troubleshooting](#troubleshooting)
 
@@ -217,6 +218,14 @@ bool int_vec_append(void *ptr, void *val) {
         *static_cast<int *>(val));
     return true;
 }
+
+void *int_vec_create_empty() {
+    return new std::vector<int>();
+}
+
+void int_vec_destroy(void *ptr) {
+    delete static_cast<std::vector<int> *>(ptr);
+}
 ```
 
 **Step 3: Create metadata**
@@ -226,7 +235,9 @@ static VectorInfo IntVectorInfo = {
     nullptr,                  // No element metadata
     int_vec_size,             // Size function
     int_vec_element_ptr,      // Element access function
-    int_vec_append            // Append function
+    int_vec_append,           // Append function
+    int_vec_create_empty,     // Create empty vector
+    int_vec_destroy           // Destroy empty vector
 };
 
 template <>
@@ -280,6 +291,14 @@ bool enemy_vec_append(void *ptr, void *val) {
         *static_cast<Enemy *>(val));
     return true;
 }
+
+void *enemy_vec_create_empty() {
+    return new std::vector<Enemy>();
+}
+
+void enemy_vec_destroy(void *ptr) {
+    delete static_cast<std::vector<Enemy> *>(ptr);
+}
 ```
 
 **Step 3: Create metadata with struct reference**
@@ -289,7 +308,9 @@ static VectorInfo EnemyVectorInfo = {
     &EnemyInfo,               // Points to struct metadata
     enemy_vec_size,
     enemy_vec_element_ptr,
-    enemy_vec_append
+    enemy_vec_append,
+    enemy_vec_create_empty,
+    enemy_vec_destroy
 };
 
 template <>
@@ -351,6 +372,14 @@ bool grid_vec_append(void *ptr, void *val) {
         *static_cast<std::vector<int> *>(val));
     return true;
 }
+
+void *grid_vec_create_empty() {
+    return new std::vector<std::vector<int>>();
+}
+
+void grid_vec_destroy(void *ptr) {
+    delete static_cast<std::vector<std::vector<int>> *>(ptr);
+}
 ```
 
 **Step 2: Create metadata with inner vector reference**
@@ -360,7 +389,9 @@ static VectorInfo VectorOfIntVectorInfo = {
     &IntVectorInfo,           // Points to inner vector metadata
     grid_vec_size,
     grid_vec_element_ptr,
-    grid_vec_append
+    grid_vec_append,
+    grid_vec_create_empty,
+    grid_vec_destroy
 };
 
 template <>
@@ -410,6 +441,14 @@ bool enemy_waves_vec_append(void *ptr, void *val) {
         *static_cast<std::vector<Enemy> *>(val));
     return true;
 }
+
+void *enemy_waves_vec_create_empty() {
+    return new std::vector<std::vector<Enemy>>();
+}
+
+void enemy_waves_vec_destroy(void *ptr) {
+    delete static_cast<std::vector<std::vector<Enemy>> *>(ptr);
+}
 ```
 
 **Step 2: Create metadata**
@@ -419,8 +458,14 @@ static VectorInfo VectorOfEnemyVectorInfo = {
     &EnemyVectorInfo,         // Inner is vector of Enemy
     enemy_waves_vec_size,
     enemy_waves_vec_element_ptr,
-    enemy_waves_vec_append
+    enemy_waves_vec_append,
+    enemy_waves_vec_create_empty,
+    enemy_waves_vec_destroy
 };
+
+**Note:** The `create_empty` and `destroy` callbacks are required for nested vector creation
+(used by `append_new_vector()`). They ensure the inner vector instance is the correct concrete
+type and prevent undefined behavior.
 
 template <>
 inline const VectorInfo *get_vector_info<std::vector<Enemy>>() {
@@ -670,6 +715,7 @@ print(cpp.enemy_waves[-1][-1].name) # Last enemy name
 #### Structs
 - Field access: `cpp.struct.field`
 - Field modification: `cpp.struct.field = value`
+- Length: `len(cpp.struct)` returns field count
 - Nested access: `cpp.struct1.struct2.field`
 - Multiple types: int, float, bool, string, vector fields
 
@@ -678,6 +724,9 @@ print(cpp.enemy_waves[-1][-1].name) # Last enemy name
 - Read: `cpp.vector[i]`, `cpp.vector[-i]`
 - Write: `cpp.vector[i] = val`
 - Append: `cpp.vector.append(val)`
+- Iteration: `for x in cpp.vector:`
+- List conversion: `list(cpp.vector)`
+- Comprehensions: `[x for x in cpp.vector]`
 - Negative indexing: `cpp.vector[-1]` (last element)
 - Element types: int, float, bool, string
 
@@ -708,9 +757,6 @@ print(cpp.enemy_waves[-1][-1].name) # Last enemy name
 
 #### Vector-Level Operations
 - **Slicing:** `cpp.scores[1:3]` ❌
-- **Iteration:** `for x in cpp.scores:` ❌
-- **Comprehensions:** `[x*2 for x in cpp.scores]` ❌
-- **len() on struct:** `len(cpp.player)` ❌
 - **Reassignment:** `cpp.scores = [1,2,3]` ❌
 - **Reassignment:** `cpp.player = new_player` ❌
 
@@ -1051,6 +1097,20 @@ for wave_idx in range(len(cpp.enemy_waves)):
    - Auto-destroyed when out of scope
    - `append_new()` creates and returns proxy
    - Proxy references vector element
+
+### Wrapper Ownership Pattern
+
+Python proxies never own the `g_values` entries directly. Instead, each proxy owns a
+lightweight wrapper that points to the same C++ data. This avoids double-free and
+use-after-free when proxies are garbage collected.
+
+```
+g_values owns BoundValue (unique_ptr)
+    └── wrapper copy (owned by Python proxy)
+        └── points to C++ data (non-owning)
+```
+
+For full details and diagrams, see [doc/architecture/WRAPPER_OWNERSHIP_PATTERN.md](doc/architecture/WRAPPER_OWNERSHIP_PATTERN.md).
 
 ### Memory Safety
 

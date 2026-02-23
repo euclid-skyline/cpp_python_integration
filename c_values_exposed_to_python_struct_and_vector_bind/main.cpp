@@ -155,7 +155,16 @@ int main()
         auto exeDir = pyembed::get_executable_dir();
         auto scriptsPath = exeDir / "scripts";
 
-        PyList_Append(path, PyUnicode_FromString(scriptsPath.string().c_str()));
+        PyObject *scriptsPathObj = PyUnicode_FromString(scriptsPath.string().c_str());
+        if (!scriptsPathObj || PyList_Append(path, scriptsPathObj) != 0)
+        {
+            Py_XDECREF(scriptsPathObj);
+            Py_DECREF(path);
+            Py_DECREF(sys);
+            PyErr_Print();
+            return 1;
+        }
+        Py_DECREF(scriptsPathObj);
 
         Py_DECREF(path);
         Py_DECREF(sys);
