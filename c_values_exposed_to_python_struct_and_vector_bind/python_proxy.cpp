@@ -1,6 +1,7 @@
 #include "python_proxy.hpp"
 #include "value_interface.hpp"
 #include <vector>
+#include <mutex>
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -53,9 +54,16 @@ static std::size_t calculate_struct_size(const StructInfo *sinfo)
 // SECTION 1 — RootProxy (from value_interface_proxy.cpp)
 // ============================================================================
 
-// ------------------------------------------------------------
-// Singleton instance pointer
-// ------------------------------------------------------------
+// ============================================================================
+// THREAD-SAFE SINGLETON INITIALIZATION (Issue 34)
+// ============================================================================
+
+// Lock for protecting the singleton initialization from race conditions.
+// This ensures that PyType_Ready is called exactly once, even in multi-threaded
+// environments where multiple threads might call create_cpp_proxy simultaneously.
+static std::mutex g_cpp_proxy_mutex;
+
+// Singleton instance pointer - protected by g_cpp_proxy_mutex
 static PyObject *g_cpp_proxy_instance = nullptr;
 
 // ------------------------------------------------------------
@@ -227,13 +235,29 @@ PyTypeObject CppProxyType = {
     "C++ variable proxy"                                    // tp_doc
 };
 
-// ------------------------------------------------------------
-// Create a new instance of the proxy
-// ------------------------------------------------------------
+// ============================================================================
+// SINGLETON FACTORY: create_cpp_proxy ()
+// ============================================================================
+// Thread-safe creation of CppProxy singleton instance.
+// Issue 34: Thread Safety - Protected by mutex to prevent race conditions during
+//           PyType_Ready() calls from multiple threads.
+// Issue 39: Reference Counting Semantics:
+//   - Fast path (already initialized): Py_INCREF and return existing instance
+//     Rationale: Return a new reference to the caller
+//   - First initialization path: PyObject_New() returns a new reference (refcount=1)
+//     Caller receives object with refcount=1, no additional Py_INCREF needed
+//   - All callers must Py_DECREF() the returned reference when done
+// ============================================================================
 PyObject *create_cpp_proxy()
 {
+    // ISSUE 34: Thread-safe singleton pattern with lock guard
+    std::lock_guard<std::mutex> lock(g_cpp_proxy_mutex);
+
+    // Check again inside lock to avoid race condition (double-checked locking)
     if (g_cpp_proxy_instance)
     {
+        // ISSUE 39: Return existing instance with new reference for caller
+        // Caller must Py_DECREF when done
         Py_INCREF(g_cpp_proxy_instance);
         return g_cpp_proxy_instance;
     }
@@ -243,6 +267,8 @@ PyObject *create_cpp_proxy()
     if (PyType_Ready(&CppProxyType) < 0)
         return nullptr;
 
+    // ISSUE 39: PyObject_New() returns a new reference (refcount=1)
+    // No additional Py_INCREF needed for first initialization
     g_cpp_proxy_instance =
         reinterpret_cast<PyObject *>(PyObject_New(CppProxyObject, &CppProxyType));
 
@@ -252,6 +278,7 @@ PyObject *create_cpp_proxy()
         return nullptr;
     }
 
+    // ISSUE 39: Caller receives object with refcount=1, must Py_DECREF when done
     return g_cpp_proxy_instance;
 }
 
