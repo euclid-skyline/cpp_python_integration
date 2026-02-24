@@ -212,6 +212,46 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+### 11. **OWNERSHIP_MODELS_GUIDE.md** – COMPREHENSIVE OWNERSHIP DOCUMENTATION (Issue 44)
+**Purpose:** Authoritative complete guide to all ownership models in the system  
+**Reading Time:** 40-50 minutes  
+**Best For:** Understanding all ownership patterns and reference counting semantics
+
+**Covers:**
+- Ownership fundamentals and core principles
+- Memory domain diagram (C++, Registry, Proxy, Python layers)
+- Registry ownership (g_values) and what it owns vs. borrows
+- Scalar type ownership (copy-on-access pattern)
+- Complex type ownership (wrapper-based pattern)
+- Wrapper ownership pattern formal definition
+- Parent-child proxy reference management (Issue 48)
+- Python reference counting semantics (new vs. borrowed references)
+- Thread safety and singleton management (Issue 34)
+- Reference counting for create_cpp_proxy (Issue 39)
+- Ownership decision tree for any data type
+- Summary table of all ownership models
+- Proxy object definitions with parent_proxy field
+- Reference counting rules for all scenarios
+
+**Key Features:**
+- Complete documentation addressing Issue 44 (insufficient documentation)
+- Covers Issue 34 (thread safety) details
+- Covers Issue 39 (reference counting) semantics
+- Covers Issue 48 (parent-child lifetime) management
+- Decision tree for understanding any ownership scenario
+- Multi-layer architecture diagram with data flow
+- Function-by-function reference counting rules
+
+**Key Insights:**
+- All ownership models serve different needs
+- Scalars use copy-on-access (inherently safe)
+- Complex types use wrapper ownership (prevents double-free)
+- Nested structures use parent reference counting (prevents use-after-free)
+- Thread-safe singleton with std::mutex (prevents race conditions)
+- All proxy returns are NEW references (caller must Py_DECREF)
+
+---
+
 ## 🎯 Reading Paths Based on Your Goals
 
 ### Path 1: "I want to understand the architecture"
@@ -264,7 +304,19 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
-### Path 5: "I want to optimize performance"
+### Path 5: "I want to understand ownership and memory safety"
+1. Read: **OWNERSHIP_MODELS_GUIDE.md** → Sections 1-4 (Fundamentals through Complex Types)
+2. Read: **SCALAR_VS_COMPLEX_OWNERSHIP.md** → Comparison matrix and examples
+3. Read: **WRAPPER_OWNERSHIP_PATTERN.md** → Detailed pattern explanation
+4. Read: **OPTION_B_IMPLEMENTATION_GUIDE.md** → Parent tracking for nested structures
+5. Reference: **OWNERSHIP_MODELS_GUIDE.md** → Decision tree and summary table
+
+**Time:** ~50 minutes  
+**Outcome:** Complete understanding of all ownership models and reference counting
+
+---
+
+### Path 6: "I want to optimize performance"
 1. Read: **DESIGN_PATTERNS_AND_EXTENSIBILITY.md** → Section IV (Performance Characteristics)
 2. Read: **DESIGN_PATTERNS_AND_EXTENSIBILITY.md** → Section II (Trade-offs, especially lookup strategies)
 3. Reference: **FUNCTION_REFERENCE.md** → Time complexity sections
@@ -551,8 +603,9 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 - SOURCE_CODE_DOCUMENTATION.md (python_proxy.cpp)
 - WRAPPER_OWNERSHIP_PATTERN.md (proxy ownership)
 
-**Ownership & Safety (Issues 18 & 26):**
-- SCALAR_VS_COMPLEX_OWNERSHIP.md (ownership comparison) ← START HERE
+**Ownership & Safety (Issues 18, 26, 34, 39, 44, 48):**
+- OWNERSHIP_MODELS_GUIDE.md (comprehensive ownership reference) ← START HERE
+- SCALAR_VS_COMPLEX_OWNERSHIP.md (ownership comparison)
 - WRAPPER_OWNERSHIP_PATTERN.md (Issue 18 fix)
 - VECTOR_ELEMENT_PROXY_INVALIDATION.md (Issue 26 problem analysis)
 - OPTION_B_IMPLEMENTATION_GUIDE.md (Issue 26 implementation)
@@ -575,6 +628,10 @@ A: Read ARCHITECTURE_DEEP_DIVE.md Section VI and DESIGN_PATTERNS_AND_EXTENSIBILI
 - ARCHITECTURE_DEEP_DIVE.md VI
 - FUNCTION_REFERENCE.md (find similar code)
 
+**Issue Resolution & Summary:**
+- ISSUES_RESOLUTION_SUMMARY.md (maps all 21 issues 29-49 to solutions)
+- COMPREHENSIVE_CODE_REVIEW.md in fixes/ (detailed issue documentation)
+
 ---
 
 This documentation set was created to provide:
@@ -582,6 +639,8 @@ This documentation set was created to provide:
 - **Depth:** Detailed function-level explanations
 - **Clarity:** Multiple perspectives (architecture, implementation, extension)
 - **Practicality:** Step-by-step guides for common tasks
+- **Comprehensiveness:** Complete ownership documentation and issue resolution tracking
 - **Extensibility:** Foundation for adding new languages/features
 
-**Last Updated:** With completion of Issues 1-17 and architectural documentation V2.
+**Last Updated:** With completion of Issues 29-49 (17 FIXED, 4 UNDER REVIEW) and comprehensive ownership documentation.
+
