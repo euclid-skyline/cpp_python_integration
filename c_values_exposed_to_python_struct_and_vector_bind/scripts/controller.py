@@ -2,7 +2,7 @@ import cpp
 
 
 def update_values():
-
+    # Example 1 - Access and modify simple struct fields
     print("=== 1) Simple struct: Player ===")
     print("Player fields count in C++:", len(cpp.player))
     print("Player health in C++:", cpp.player.health)
@@ -14,7 +14,7 @@ def update_values():
 
     print("Updated Player health in Python script:", cpp.player.health)
     print("Updated Player speed in Python script:", cpp.player.speed)
-
+    # Example 2 - Access and modify vector of simple types
     print("\n=== 2) Vector of simple types: scores ===")
     print("Scores length:", len(cpp.scores))
     print(
@@ -36,7 +36,7 @@ def update_values():
         "Scores after modification second element in Python script:",
         [cpp.scores[i] for i in range(len(cpp.scores))],
     )
-
+    # Example 3 - Struct containing a vector
     print("\n=== 3) Struct containing a vector: Team ===")
     print("Team fields count in C++:", len(cpp.team))
     print("Team average in C++:", cpp.team.average)
@@ -57,7 +57,7 @@ def update_values():
     # Modify scalar field
     cpp.team.average = 33.3
     print("Updated Team average in Python script:", cpp.team.average)
-
+    # Example 4 - Vector containing structs
     print("\n=== 4) Vector containing structs: enemies ===")
     print("Enemies count in C++:", len(cpp.enemies))
 
@@ -100,7 +100,7 @@ def update_values():
         cpp.enemies[0].health,
         cpp.enemies[0].x,
     )
-
+    # Example 5 - Vector containing vectors of simple types
     print("\n=== 5) Vector containing vectors of ints: grid ===")
     print("Grid outer size in C++:", len(cpp.grid))
 
@@ -130,6 +130,7 @@ def update_values():
     for i in range(len(cpp.grid)):
         row = cpp.grid[i]
         print(f"Row {i}:", [row[j] for j in range(len(row))])
+    # Example 6 - Vector containing vectors of structs
     print("\n=== 6) Vector containing vectors of Enemy structs: enemy_waves ===")
     print("Enemy waves (spawns) count in C++:", len(cpp.enemy_waves))
 
@@ -166,6 +167,12 @@ def update_values():
             f"\nModified first enemy in first wave: health={cpp.enemy_waves[0][0].health}, x={cpp.enemy_waves[0][0].x}"
         )
 
+    # Print final state of all waves after modification using iteration
+    print("\nFinal state of all enemy waves after modification in Python script:")
+    for i, enemy_wave in enumerate(cpp.enemy_waves):
+        print(f"\nWave {i} has {len(enemy_wave)} enemies:")
+        for j, enemy in enumerate(enemy_wave):
+            print(f"  Enemy {j} via iteration: health={enemy.health}, x={enemy.x}")
 
 def test_boundary_conditions():
     """Issue 15: Test boundary conditions and error handling"""

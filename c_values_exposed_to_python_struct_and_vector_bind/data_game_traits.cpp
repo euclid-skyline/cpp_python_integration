@@ -1,10 +1,10 @@
 #include "data_game_traits.hpp"
 
-// Define global vectors
-std::vector<int> scores;
-std::vector<Enemy> enemies;
-std::vector<std::vector<int>> grid;
-std::vector<std::vector<Enemy>> enemy_waves;
+// Define global vectors with explicit empty initialization
+std::vector<int> scores = {};
+std::vector<Enemy> enemies = {};
+std::vector<std::vector<int>> grid = {};
+std::vector<std::vector<Enemy>> enemy_waves = {};
 
 // Function pointer implementations for std::vector<int>
 std::size_t int_vec_size(void *ptr)
