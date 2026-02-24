@@ -1,5 +1,25 @@
 # Include Dependency Analysis
 
+## Table of Contents
+
+- [Summary](#summary)
+- [Include Guard Mechanism](#include-guard-mechanism)
+- [Dependency Hierarchy](#dependency-hierarchy)
+  - [Level 0 (Base - No Project Dependencies)](#level-0-base---no-project-dependencies)
+  - [Level 1 (Depends on Level 0)](#level-1-depends-on-level-0)
+  - [Level 2 (Depends on Level 1)](#level-2-depends-on-level-1)
+  - [Level 3 (Depends on Level 2)](#level-3-depends-on-level-2)
+  - [Level 4 (Depends on Level 3)](#level-4-depends-on-level-3)
+- [Dependency Graph](#dependency-graph)
+- [Circular Dependency Check](#circular-dependency-check)
+- [Forward Declarations](#forward-declarations)
+- [Best Practices Followed](#best-practices-followed)
+- [Recommendations](#recommendations)
+  - [Current Status: GOOD ✅](#current-status-good-)
+  - [Future Considerations](#future-considerations)
+- [Comparison with Traditional Guards](#comparison-with-traditional-guards)
+- [Conclusion](#conclusion)
+
 **Date:** February 21, 2026  
 **Issue:** Code Review Issue 14 - Include Guards Verification
 

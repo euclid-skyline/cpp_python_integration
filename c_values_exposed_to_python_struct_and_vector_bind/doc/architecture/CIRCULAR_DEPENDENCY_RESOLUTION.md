@@ -1,5 +1,28 @@
 # Circular Dependency Resolution in Option B Implementation
 
+## Table of Contents
+
+- [Overview](#overview)
+- [The Problem](#the-problem)
+  - [Dependency Graph (Naive Approach)](#dependency-graph-naive-approach)
+  - [Detailed Analysis](#detailed-analysis)
+- [The Solution: Two-Phase Include Strategy](#the-solution-two-phase-include-strategy)
+  - [Phase 1: Forward Declarations Only (reflection_vector.hpp)](#phase-1-forward-declarations-only-reflection_vectorhpp)
+  - [Phase 2: Include at End of File (reflection_struct.hpp)](#phase-2-include-at-end-of-file-reflection_structhpp)
+  - [Include Order Timeline](#include-order-timeline)
+- [Why This Pattern Works](#why-this-pattern-works)
+  - [✅ Advantages](#-advantages)
+  - [Theory: Incomplete Types vs Complete Types](#theory-incomplete-types-vs-complete-types)
+- [Visual Diagram: Include Chain](#visual-diagram-include-chain)
+- [Comparison: Alternative Approaches](#comparison-alternative-approaches)
+  - [❌ Naive Approach (Circular)](#-naive-approach-circular)
+  - [❌ Separate Implementation Files](#-separate-implementation-files)
+  - [✅ Two-Phase Include (Chosen Solution)](#-two-phase-include-chosen-solution)
+- [For Future Developers](#for-future-developers)
+  - [When Adding New Features](#when-adding-new-features)
+- [Summary](#summary)
+- [References](#references)
+
 ## Overview
 
 Option B's parent tracking feature required `BoundStruct` to hold a pointer to `BoundVector` and call its methods. This created a circular include dependency that required careful resolution.

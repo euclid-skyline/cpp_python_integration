@@ -1,5 +1,43 @@
 # Design Patterns, Trade-offs, and Extensibility Guide
 
+## Table of Contents
+
+- [I. Core Design Patterns Used](#i-core-design-patterns-used)
+  - [Pattern 1: Type-Erasure with void* Pointers](#pattern-1-type-erasure-with-void-pointers)
+  - [Pattern 2: Function Pointers for Type-Specific Operations](#pattern-2-function-pointers-for-type-specific-operations)
+  - [Pattern 3: Offset-Based Field Access (Memory Intrusion)](#pattern-3-offset-based-field-access-memory-intrusion)
+  - [Pattern 4: Compile-Time Dispatch with if constexpr](#pattern-4-compile-time-dispatch-with-if-constexpr)
+  - [Pattern 5: Thread-Safe Singleton with Double-Checked Locking (Issue #34)](#pattern-5-thread-safe-singleton-with-double-checked-locking-issue-34)
+  - [Pattern 6: Python Reference Counting Semantics (Issue #39)](#pattern-6-python-reference-counting-semantics-issue-39)
+  - [Pattern 7: Parent-Child Proxy Lifetime Management (Issue #48)](#pattern-7-parent-child-proxy-lifetime-management-issue-48)
+- [II. Design Trade-offs and Decisions](#ii-design-trade-offs-and-decisions)
+  - [Trade-off 1: Pointer Arithmetic vs. Container Wrapper](#trade-off-1-pointer-arithmetic-vs-container-wrapper)
+  - [Trade-off 2: Linear Field Lookup vs. Hash Map](#trade-off-2-linear-field-lookup-vs-hash-map)
+  - [Trade-off 3: Single Binding Registry vs. Per-Type Registries](#trade-off-3-single-binding-registry-vs-per-type-registries)
+- [III. Extensibility Framework](#iii-extensibility-framework)
+  - [How to Add a New Scalar Type](#how-to-add-a-new-scalar-type)
+  - [How to Add a New Struct Type](#how-to-add-a-new-struct-type)
+  - [How to Add a New Vector Type](#how-to-add-a-new-vector-type)
+  - [Adding Language Bindings (Lua, Ruby)](#adding-language-bindings-lua-ruby)
+- [IV. Performance Characteristics](#iv-performance-characteristics)
+  - [Memory Layout](#memory-layout)
+  - [Time Complexity](#time-complexity)
+  - [Cache Characteristics](#cache-characteristics)
+- [V. Common Pitfalls and Solutions](#v-common-pitfalls-and-solutions)
+  - [Pitfall 1: Modifying Struct After Binding](#pitfall-1-modifying-struct-after-binding)
+  - [Pitfall 2: Using auto Instead of Explicit Types](#pitfall-2-using-auto-instead-of-explicit-types)
+  - [Pitfall 3: String Memory Lifetime](#pitfall-3-string-memory-lifetime)
+  - [Pitfall 4: Nested Struct Modification](#pitfall-4-nested-struct-modification)
+  - [Pitfall 5: Vector Mutation During Iteration](#pitfall-5-vector-mutation-during-iteration)
+  - [Pitfall 6: Proxy Wrapper Lifetime (Double-Free PREVENTED)](#pitfall-6-proxy-wrapper-lifetime-double-free-prevented)
+  - [Pitfall 7: Vector Element Proxy Invalidation (Use-After-Free PREVENTED)](#pitfall-7-vector-element-proxy-invalidation-use-after-free-prevented)
+  - [Memory Safety Summary](#memory-safety-summary)
+- [VI. Extension API for User-Defined Types](#vi-extension-api-for-user-defined-types)
+  - [Compile-Time Registration Points](#compile-time-registration-points)
+  - [Runtime Registration Points](#runtime-registration-points)
+  - [Customization Points](#customization-points)
+- [VII. Summary: Design Decisions Hierarchy](#vii-summary-design-decisions-hierarchy)
+
 ## I. Core Design Patterns Used
 
 ### Pattern 1: Type-Erasure with void* Pointers

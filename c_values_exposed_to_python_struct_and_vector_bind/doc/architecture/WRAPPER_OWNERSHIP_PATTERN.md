@@ -1,5 +1,23 @@
 # Wrapper Ownership Pattern: Non-Owning Pointers in Python Proxies
 
+## Table of Contents
+
+- [Overview](#overview)
+- [The Problem We Solve](#the-problem-we-solve)
+- [The Solution: Wrapper Copies](#the-solution-wrapper-copies)
+- [Architecture Diagram](#architecture-diagram)
+- [Code Example: Wrapper Creation Pattern](#code-example-wrapper-creation-pattern)
+  - [Safe Pattern (Both Paths Use This)](#safe-pattern-both-paths-use-this)
+- [Ownership Timeline](#ownership-timeline)
+  - [Scenario: Python code accesses multiple proxies](#scenario-python-code-accesses-multiple-proxies)
+- [Key Design Principles](#key-design-principles)
+- [Why This Matters](#why-this-matters)
+  - [Without wrapper pattern (Issue 18 before fix)](#without-wrapper-pattern-issue-18-before-fix)
+  - [With wrapper pattern (After fix)](#with-wrapper-pattern-after-fix)
+- [Related Issues](#related-issues)
+- [Best Practices](#best-practices)
+- [See Also](#see-also)
+
 ## Overview
 
 This document explains the **wrapper ownership pattern** used to safely bridge C++ data ownership with Python proxy lifetime management.

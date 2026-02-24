@@ -1,5 +1,42 @@
 # Ownership Models: Scalars vs Structs vs Vectors
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Part 1: Ownership Fundamentals](#part-1-ownership-fundamentals)
+  - [The Central Problem](#the-central-problem)
+- [Part 2: Scalar Types (int, float, bool, string)](#part-2-scalar-types-int-float-bool-string)
+  - [Design: Copy-on-Access](#design-copy-on-access)
+  - [Access Flow](#access-flow)
+  - [Key Safety Property](#key-safety-property)
+  - [Why Scalars Are Safe from Issue #18](#why-scalars-are-safe-from-issue-18)
+- [Part 3: Struct Types](#part-3-struct-types)
+  - [Design Before Fix: Shared Ownership (VULNERABLE)](#design-before-fix-shared-ownership-vulnerable)
+  - [Design After Fix: Wrapper Ownership (SAFE)](#design-after-fix-wrapper-ownership-safe)
+  - [Wrapper Ownership Pattern Details](#wrapper-ownership-pattern-details)
+- [Part 4: Vector Types](#part-4-vector-types)
+  - [Design Before Fix: Shared Ownership (VULNERABLE)](#design-before-fix-shared-ownership-vulnerable-1)
+  - [Design After Fix: Wrapper Ownership (SAFE)](#design-after-fix-wrapper-ownership-safe-1)
+  - [Vector-Specific Ownership: Parent Tracking (Issue #26)](#vector-specific-ownership-parent-tracking-issue-26)
+- [Part 5: Comparison Matrix](#part-5-comparison-matrix)
+  - [Ownership Model Summary](#ownership-model-summary)
+  - [Code Path Comparison](#code-path-comparison)
+- [Part 6: Access Flow Diagrams](#part-6-access-flow-diagrams)
+  - [Scalar Access Flow](#scalar-access-flow)
+  - [Struct Access Flow (After Fix)](#struct-access-flow-after-fix)
+  - [Vector Access Flow (After Fix)](#vector-access-flow-after-fix)
+- [Part 7: Practical Examples](#part-7-practical-examples)
+  - [Example 1: Multiple Accesses](#example-1-multiple-accesses)
+  - [Example 2: Vector with Reallocation](#example-2-vector-with-reallocation)
+- [Part 8: Root Cause of Issue #18](#part-8-root-cause-of-issue-18)
+  - [What Made Issue #18 Possible](#what-made-issue-18-possible)
+  - [Why Scalars Escaped This](#why-scalars-escaped-this)
+  - [How the Fix Prevents It](#how-the-fix-prevents-it)
+- [Part 9: Memory Safety Summary](#part-9-memory-safety-summary)
+  - [The Three-Tier Safety Model](#the-three-tier-safety-model)
+  - [Key Invariants Maintained](#key-invariants-maintained)
+- [Conclusion](#conclusion)
+
 ## Overview
 
 Issue #18 (Double-Free Risk in Root Proxy Attribute Access) revealed a critical vulnerability in how complex types (structs and vectors) managed ownership between the reflection registry and Python proxies. Scalar types, by contrast, were never vulnerable. This document explains why, the ownership differences, and how each type safely manages its lifecycle.

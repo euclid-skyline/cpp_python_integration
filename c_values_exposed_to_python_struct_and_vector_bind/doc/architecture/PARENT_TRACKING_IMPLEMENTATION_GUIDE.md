@@ -1,5 +1,35 @@
 # Parent Tracking Implementation Guide: Dynamic Element Resolution for Vector Safety
 
+## Table of Contents
+
+- [Purpose](#purpose)
+- [Problem Being Solved](#problem-being-solved)
+- [Solution: Parent Tracking with Dynamic Resolution](#solution-parent-tracking-with-dynamic-resolution)
+- [Implementation Overview](#implementation-overview)
+- [Architecture Changes](#architecture-changes)
+  - [1. Update BoundStruct to Support Parent Tracking](#1-update-boundstruct-to-support-parent-tracking)
+  - [2. Update BoundVector Similarly](#2-update-boundvector-similarly)
+  - [3. Update VectorProxy_getitem to Use Parent Constructor](#3-update-vectorproxy_getitem-to-use-parent-constructor)
+  - [4. Update StructProxy_getattro for Nested Structs/Vectors](#4-update-structproxy_getattro-for-nested-structsvectors)
+  - [5. Update VectorProxy_append_new](#5-update-vectorproxy_append_new)
+  - [6. Update VectorProxy_append_new_vector](#6-update-vectorproxy_append_new_vector)
+- [Circular Dependency Resolution](#circular-dependency-resolution)
+  - [The Problem](#the-problem)
+  - [The Solution](#the-solution)
+  - [Why This Works](#why-this-works)
+  - [Key Points](#key-points)
+  - [Include Order in Practice](#include-order-in-practice)
+- [Testing](#testing)
+  - [Test Case 1: Element Proxy After Append](#test-case-1-element-proxy-after-append)
+  - [Test Case 2: Nested Vector Element](#test-case-2-nested-vector-element)
+  - [Test Case 3: Multiple Proxies](#test-case-3-multiple-proxies)
+- [Performance Considerations](#performance-considerations)
+  - [Overhead](#overhead)
+  - [Memory](#memory)
+- [Migration Path](#migration-path)
+- [Backwards Compatibility](#backwards-compatibility)
+- [Summary](#summary)
+
 ## Purpose
 
 This document provides the complete implementation guide for **parent tracking** - the solution that prevents use-after-free errors when vector element proxies outlive vector reallocations.

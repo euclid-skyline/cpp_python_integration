@@ -1,5 +1,34 @@
 # Source Code Documentation
 
+## Table of Contents
+
+- [1) Architecture Overview](#1-architecture-overview)
+- [2) File-by-File Guide](#2-file-by-file-guide)
+  - [[main.cpp](main.cpp)](#maincpp)
+  - [[cpp_module.cpp](cpp_module.cpp)](#cpp_modulecpp)
+  - [[cpp_module.hpp](cpp_module.hpp)](#cpp_modulehpp)
+  - [[python_proxy.hpp](python_proxy.hpp)](#python_proxyhpp)
+  - [[python_proxy.cpp](python_proxy.cpp)](#python_proxycpp)
+  - [[python_bind.hpp](python_bind.hpp)](#python_bindhpp)
+  - [[value_interface.hpp](value_interface.hpp)](#value_interfacehpp)
+  - [[reflection_struct.hpp](reflection_struct.hpp)](#reflection_structhpp)
+  - [[reflection_vector.hpp](reflection_vector.hpp)](#reflection_vectorhpp)
+- [3) Memory Safety Architecture](#3-memory-safety-architecture)
+  - [Pattern 1: Wrapper Ownership (Issue #18 Fix)](#pattern-1-wrapper-ownership-issue-18-fix)
+  - [Pattern 2: Parent Tracking (Issue #26 Fix)](#pattern-2-parent-tracking-issue-26-fix)
+  - [Pattern 3: Thread-Safe Singleton Initialization (Issue #34 Fix)](#pattern-3-thread-safe-singleton-initialization-issue-34-fix)
+  - [Pattern 4: Python Reference Counting Semantics (Issue #39 Implementation)](#pattern-4-python-reference-counting-semantics-issue-39-implementation)
+  - [Pattern 5: Parent-Child Proxy Lifetime Management (Issue #48 Fix)](#pattern-5-parent-child-proxy-lifetime-management-issue-48-fix)
+  - [Circular Dependency Resolution](#circular-dependency-resolution)
+- [4) Design Perspective and Tradeoffs](#4-design-perspective-and-tradeoffs)
+- [5) Known Limitations (Behavioral)](#5-known-limitations-behavioral)
+- [5) Improvements and Enhancements](#5-improvements-and-enhancements)
+  - [High-value enhancements](#high-value-enhancements)
+  - [Usability enhancements](#usability-enhancements)
+  - [Robustness enhancements](#robustness-enhancements)
+  - [Testing enhancements](#testing-enhancements)
+- [6) Quick Reference](#6-quick-reference)
+
 This document explains the source code structure, key functions and variables, and the overall design. It also lists improvement and enhancement ideas.
 
 ## 1) Architecture Overview

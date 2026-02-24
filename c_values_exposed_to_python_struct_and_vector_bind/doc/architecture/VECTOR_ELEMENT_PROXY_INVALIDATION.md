@@ -1,5 +1,28 @@
 # Vector Element Proxy Invalidation (Issue 26)
 
+## Table of Contents
+
+- [Problem Statement](#problem-statement)
+- [The Root Cause](#the-root-cause)
+  - [How Element Proxies Work (Current Implementation)](#how-element-proxies-work-current-implementation)
+  - [Why This Is Unsafe](#why-this-is-unsafe)
+- [Concrete Example with Memory Addresses](#concrete-example-with-memory-addresses)
+  - [Step 1: Initial State](#step-1-initial-state)
+  - [Step 2: Python Gets Proxy](#step-2-python-gets-proxy)
+  - [Step 3: Append Triggers Reallocation](#step-3-append-triggers-reallocation)
+  - [Step 4: Using Old Proxy Causes Crash](#step-4-using-old-proxy-causes-crash)
+- [Impact](#impact)
+  - [Possible Outcomes](#possible-outcomes)
+  - [Risk Factors](#risk-factors)
+- [Solution Options](#solution-options)
+  - [Option A: Document Limitation (Quick Fix)](#option-a-document-limitation-quick-fix)
+  - [Option B: Store Index + Parent Vector (Safe Fix) ⭐ RECOMMENDED](#option-b-store-index--parent-vector-safe-fix--recommended)
+  - [Option C: Prevent Append While Proxies Exist (Strict)](#option-c-prevent-append-while-proxies-exist-strict)
+- [Recommendation](#recommendation)
+- [Implementation Guide (Option B)](#implementation-guide-option-b)
+- [Related Issues](#related-issues)
+- [References](#references)
+
 ## Problem Statement
 
 When Python holds a proxy to a vector element and then appends to the same vector, the proxy can point to freed memory, causing crashes or data corruption.

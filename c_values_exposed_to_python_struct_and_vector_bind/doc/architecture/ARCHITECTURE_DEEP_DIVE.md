@@ -1,5 +1,44 @@
 # Architecture Deep Dive: Pure C++ Reflection Enables Multi-Language Scripting
 
+## Table of Contents
+
+- [I. The Three-Layer Design Philosophy](#i-the-three-layer-design-philosophy)
+  - [The Problem with Traditional Approaches](#the-problem-with-traditional-approaches)
+  - [The Solution: Three Independent Layers](#the-solution-three-independent-layers)
+- [II. Layer 1: Pure C++ Reflection – The Foundation](#ii-layer-1-pure-c-reflection--the-foundation)
+  - [Design Mandate: Zero Python Dependencies](#design-mandate-zero-python-dependencies)
+  - [Component 1: reflection_value.hpp (~25 lines)](#component-1-reflection_valuehpp-25-lines)
+  - [Component 2: reflection_struct.hpp (~100 lines)](#component-2-reflection_structhpp-100-lines)
+  - [Component 3: reflection_vector.hpp (~85 lines)](#component-3-reflection_vectorhpp-85-lines)
+- [III. Layer 2: Binding Bridge – Type Detection & Registration](#iii-layer-2-binding-bridge--type-detection--registration)
+  - [Type Traits Pattern](#type-traits-pattern)
+  - [Metadata Provider Pattern](#metadata-provider-pattern)
+  - [Compile-Time Dispatch with if constexpr](#compile-time-dispatch-with-if-constexpr)
+  - [Global Registry Pattern](#global-registry-pattern)
+- [IV. Layer 3: Python Integration – Bringing It All Together](#iv-layer-3-python-integration--bringing-it-all-together)
+  - [Core Challenge: Making C++ Data Pythonic](#core-challenge-making-c-data-pythonic)
+  - [cpp_module.cpp: Dynamic Module With Custom Getattr](#cpp_modulecpp-dynamic-module-with-custom-getattr)
+  - [python_proxy.cpp: Pythonic Semantics for C++ Data](#python_proxycpp-pythonic-semantics-for-c-data)
+  - [python_bind.hpp: Scalar Conversions](#python_bindhpp-scalar-conversions)
+- [V. Design Patterns and Their Justifications](#v-design-patterns-and-their-justifications)
+  - [Pattern 1: Type-Erasure with void*](#pattern-1-type-erasure-with-void)
+  - [Pattern 2: Function Pointers for Type-Specific Operations](#pattern-2-function-pointers-for-type-specific-operations)
+  - [Pattern 3: Offset-Based Field Access](#pattern-3-offset-based-field-access)
+  - [Pattern 4: Compile-Time Dispatch with if constexpr](#pattern-4-compile-time-dispatch-with-if-constexpr)
+- [VI. Future Multi-Language Extensions](#vi-future-multi-language-extensions)
+  - [Why This Architecture Scales](#why-this-architecture-scales)
+  - [Adding Lua Support: What Changes?](#adding-lua-support-what-changes)
+  - [Code Reuse Example – Reading a Struct Field](#code-reuse-example--reading-a-struct-field)
+- [VII. Summary: Layers and Concerns](#vii-summary-layers-and-concerns)
+- [VIII. Memory Safety Architecture](#viii-memory-safety-architecture)
+  - [Safety Pattern 1: Wrapper Ownership Model](#safety-pattern-1-wrapper-ownership-model)
+  - [Safety Pattern 2: Parent Tracking for Dynamic Resolution](#safety-pattern-2-parent-tracking-for-dynamic-resolution)
+  - [Circular Dependency Resolution](#circular-dependency-resolution)
+  - [Memory Safety Summary](#memory-safety-summary)
+  - [Safety Pattern 3: Thread-Safe Singleton Initialization (Issue #34)](#safety-pattern-3-thread-safe-singleton-initialization-issue-34)
+  - [Safety Pattern 4: Python Reference Counting Semantics (Issue #39)](#safety-pattern-4-python-reference-counting-semantics-issue-39)
+  - [Comprehensive Safety Architecture Summary](#comprehensive-safety-architecture-summary)
+
 ## I. The Three-Layer Design Philosophy
 
 This project solves a fundamental problem in embedded systems: **How do we expose C++ data structures to scripting languages without baking language-specific details throughout the codebase?**

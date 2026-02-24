@@ -1,5 +1,36 @@
 # Visual Architecture Summary and Reference Sheet
 
+## Table of Contents
+
+- [The Three-Layer System at a Glance](#the-three-layer-system-at-a-glance)
+- [Data Access Flow: `cpp.player.health = 50`](#data-access-flow-cpplayerhealth--50)
+  - [Step 1: Module Attribute Access](#step-1-module-attribute-access)
+  - [Step 2: Field Attribute Access](#step-2-field-attribute-access)
+  - [Step 3: Assignment](#step-3-assignment)
+- [Memory Architecture: Zero-Copy Design](#memory-architecture-zero-copy-design)
+- [Memory Safety Architecture](#memory-safety-architecture)
+  - [Pattern 1: Wrapper Ownership (Issue #18 Fix)](#pattern-1-wrapper-ownership-issue-18-fix)
+  - [Pattern 2: Parent Tracking (Issue #26 Fix)](#pattern-2-parent-tracking-issue-26-fix)
+  - [Safety Cost Analysis](#safety-cost-analysis)
+- [Type Detection: Compile-Time Branching](#type-detection-compile-time-branching)
+- [Python Proxy Protocol Methods](#python-proxy-protocol-methods)
+  - [StructProxy](#structproxy)
+  - [VectorProxy](#vectorproxy)
+  - [VectorIterator](#vectoriterator)
+- [Type Conversion Flow](#type-conversion-flow)
+  - [C++ to Python (read)](#c-to-python-read)
+  - [Python to C++ (write)](#python-to-c-write)
+- [Extension Pattern: Adding a New Struct Type](#extension-pattern-adding-a-new-struct-type)
+- [Extension Pattern: Adding Language Binding (Lua)](#extension-pattern-adding-language-binding-lua)
+- [Performance Characteristics](#performance-characteristics)
+  - [Best Case (Direct Memory Access)](#best-case-direct-memory-access)
+  - [Worst Case (Nested Access)](#worst-case-nested-access)
+  - [Vector Iteration](#vector-iteration)
+- [Registry Structure](#registry-structure)
+- [Key Concepts Quick Reference](#key-concepts-quick-reference)
+- [Common Operations Performance](#common-operations-performance)
+- [Decision Tree: Choose Your Pattern](#decision-tree-choose-your-pattern)
+
 ## The Three-Layer System at a Glance
 
 ```

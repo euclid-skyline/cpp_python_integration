@@ -1,5 +1,34 @@
 # Complete Documentation Index and Reading Guide
 
+## Table of Contents
+
+- [Overview](#overview)
+- [🎯 Reading Paths Based on Your Goals](#-reading-paths-based-on-your-goals)
+  - [Path 1: "I want to understand the architecture"](#path-1-i-want-to-understand-the-architecture)
+  - [Path 2: "I want to understand how specific features work"](#path-2-i-want-to-understand-how-specific-features-work)
+  - [Path 3: "I want to add a new feature"](#path-3-i-want-to-add-a-new-feature)
+  - [Path 4: "I want to add Lua/Ruby support"](#path-4-i-want-to-add-luaruby-support)
+  - [Path 5: "I want to understand ownership and memory safety"](#path-5-i-want-to-understand-ownership-and-memory-safety)
+  - [Path 6: "I want to optimize performance"](#path-6-i-want-to-optimize-performance)
+- [🔍 Quick Reference: What to Read for Common Questions](#-quick-reference-what-to-read-for-common-questions)
+- [📚 Documentation Files](#-documentation-files)
+  - [1. **ARCHITECTURE_DEEP_DIVE.md** – START HERE](#1-architecture_deep_divemd--start-here)
+  - [2. **FUNCTION_REFERENCE.md** – DETAILED IMPLEMENTATION](#2-function_referencemd--detailed-implementation)
+  - [3. **DESIGN_PATTERNS_AND_EXTENSIBILITY.md** – PATTERNS & EXTENSION](#3-design_patterns_and_extensibilitymd--patterns--extension)
+  - [4. **SOURCE_CODE_DOCUMENTATION.md** – ORIGINAL REFERENCE](#4-source_code_documentationmd--original-reference)
+  - [5. **VECTOR_ELEMENT_PROXY_INVALIDATION.md** – ISSUE 26 ANALYSIS](#5-vector_element_proxy_invalidationmd--issue-26-analysis)
+  - [6. **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** – ISSUE 26 IMPLEMENTATION](#6-parent_tracking_implementation_guidemd--issue-26-implementation)
+  - [7. **CIRCULAR_DEPENDENCY_RESOLUTION.md** – HEADER ARCHITECTURE PATTERN](#7-circular_dependency_resolutionmd--header-architecture-pattern)
+  - [8. **USAGE_GUIDE.md** – PYTHON API REFERENCE](#8-usage_guidemd--python-api-reference)
+  - [9. **WRAPPER_OWNERSHIP_PATTERN.md** – OWNERSHIP SEMANTICS](#9-wrapper_ownership_patternmd--ownership-semantics)
+  - [10. **SCALAR_VS_COMPLEX_OWNERSHIP.md** – OWNERSHIP COMPARISON](#10-scalar_vs_complex_ownershipmd--ownership-comparison)
+  - [11. **OWNERSHIP_MODELS_GUIDE.md** – COMPREHENSIVE OWNERSHIP DOCUMENTATION (Issue 44)](#11-ownership_models_guidemd--comprehensive-ownership-documentation-issue-44)
+- [📖 File Organization](#-file-organization)
+- [🏗️ Three-Layer Architecture Summary](#️-three-layer-architecture-summary)
+  - [Layer 1: Pure C++ Reflection](#layer-1-pure-c-reflection)
+  - [Layer 2: Binding Bridge](#layer-2-binding-bridge)
+  - [Layer 3: Python Integration](#layer-3-python-integration)
+
 ## Overview
 
 This documentation set provides a comprehensive understanding of the C++/Python integration project, from high-level architecture to implementation details. The documents are designed to be read in a specific order based on your learning goals.
