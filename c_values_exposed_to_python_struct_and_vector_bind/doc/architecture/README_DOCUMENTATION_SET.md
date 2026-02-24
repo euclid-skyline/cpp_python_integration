@@ -555,6 +555,6 @@ This is professional, production-quality architecture meeting real-world constra
 
 **Documentation Complete and Ready for Use** ✅
 
-All files are located in: `c_values_exposed_to_python_struct_and_vector_bind/`
+All files are located in: `c_values_exposed_to_python_struct_and_vector_bind/doc/architecture`
 
 Start with: **DOCUMENTATION_INDEX.md** for navigation guidance.
