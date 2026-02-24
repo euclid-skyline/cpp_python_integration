@@ -716,6 +716,11 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
 {
     (void)args;
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorProxy has null BoundVector");
+        return nullptr;
+    }
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
 
@@ -783,6 +788,11 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
 {
     (void)args;
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorProxy has null BoundVector");
+        return nullptr;
+    }
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
 
