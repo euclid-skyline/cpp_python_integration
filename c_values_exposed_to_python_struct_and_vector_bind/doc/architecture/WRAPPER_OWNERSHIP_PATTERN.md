@@ -26,6 +26,9 @@ This document explains the **wrapper ownership pattern** used to safely bridge C
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## The Problem We Solve
 
 Without the wrapper pattern, we get **double-free/use-after-free** crashes:
@@ -45,6 +48,9 @@ StructProxy_dealloc() {
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## The Solution: Wrapper Copies
 
@@ -68,6 +74,9 @@ StructProxy_dealloc() {
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Architecture Diagram
 
@@ -136,6 +145,9 @@ StructProxy_dealloc() {
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Code Example: Wrapper Creation Pattern
 
 ### Safe Pattern (Both Paths Use This):
@@ -196,6 +208,9 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Ownership Timeline
 
 ### Scenario: Python code accesses multiple proxies
@@ -230,6 +245,9 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Key Design Principles
 
 | Principle | Implementation | Benefit |
@@ -241,6 +259,9 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
 | **Consistent pattern** | Both module path and root proxy use same approach | Maintainable, understandable code |
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Why This Matters
 
@@ -266,6 +287,9 @@ g_values owns X
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Related Issues
 
 - **Issue 18:** Double-Free in Root Proxy (FIXED by this pattern)
@@ -273,6 +297,9 @@ g_values owns X
 - **Issue 1-3:** Nested Vector Memory Management (Used proper destructors)
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Best Practices
 
@@ -284,9 +311,15 @@ g_values owns X
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## See Also
 
 - `ARCHITECTURE_DEEP_DIVE.md` - Three-layer architecture overview
 - `python_proxy.cpp` - Proxy implementation (lines 40-90 for wrapper pattern)
 - `cpp_module.cpp` - Module attribute access (lines 38-63 for safe example)
 - `value_interface.hpp` - g_values definition and PyInterface::bind()
+
+[Back to Table of Contents](#table-of-contents)
+

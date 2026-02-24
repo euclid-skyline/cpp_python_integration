@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [The Three-Layer System at a Glance](#the-three-layer-system-at-a-glance)
 - [Data Access Flow: `cpp.player.health = 50`](#data-access-flow-cpplayerhealth--50)
   - [Step 1: Module Attribute Access](#step-1-module-attribute-access)
@@ -30,6 +31,19 @@
 - [Key Concepts Quick Reference](#key-concepts-quick-reference)
 - [Common Operations Performance](#common-operations-performance)
 - [Decision Tree: Choose Your Pattern](#decision-tree-choose-your-pattern)
+
+## Overview
+
+This document provides visual diagrams and quick reference summaries of the C++/Python integration architecture. It includes data flow diagrams, memory layout visualizations, protocol method summaries, performance characteristics, and decision trees to help quickly understand and navigate the system.
+
+**Target Audience:** Developers who prefer visual learning, need quick reference material, or want to understand data flow through the system.
+
+**Key Topics:** Three-layer architecture diagrams, data access flow visualizations, memory architecture, type conversion flows, extension patterns, and performance characteristics.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## The Three-Layer System at a Glance
 
@@ -95,6 +109,9 @@ PYTHON CODE
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Data Access Flow: `cpp.player.health = 50`
 
 ### Step 1: Module Attribute Access
@@ -140,6 +157,9 @@ C++ Memory: player.health is now 50
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Memory Architecture: Zero-Copy Design
 
@@ -188,6 +208,9 @@ KEY: Python never copies player data!
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Memory Safety Architecture
 
@@ -293,6 +316,9 @@ Trade-off: TRIVIAL overhead for COMPLETE memory safety
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Type Detection: Compile-Time Branching
 
 ```
@@ -325,6 +351,9 @@ Result: Only BoundVector code in binary, no overhead
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Python Proxy Protocol Methods
 
@@ -362,6 +391,9 @@ VectorIterator_next()   ← Handles: next(iterator)
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Type Conversion Flow
 
 ### C++ to Python (read)
@@ -383,6 +415,9 @@ PyObject (str)    →  PyBoundString::from_python() → C++ Memory (string)
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Extension Pattern: Adding a New Struct Type
 
@@ -425,6 +460,9 @@ Python now supports:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Extension Pattern: Adding Language Binding (Lua)
 
 ```
@@ -459,6 +497,9 @@ File Mapping:
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Performance Characteristics
 
@@ -503,6 +544,9 @@ Space:        ✓ O(1) – only one VectorIteratorObject allocated
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Registry Structure
 
 ```
@@ -529,6 +573,9 @@ Space:  ~600 bytes for 5 variables + overhead
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Key Concepts Quick Reference
 
 | Concept | Where | Purpose | How |
@@ -546,6 +593,9 @@ Space:  ~600 bytes for 5 variables + overhead
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Common Operations Performance
 
 ```
@@ -562,6 +612,9 @@ Modify nested.field    O(25)     O(48)   Two proxies created
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Decision Tree: Choose Your Pattern
 
@@ -606,3 +659,6 @@ Need to...?
 
 **This visual reference sheet covers the complete system at a glance.**
 **For detailed explanations, refer to the 4 main documentation files.**
+
+[Back to Table of Contents](#table-of-contents)
+

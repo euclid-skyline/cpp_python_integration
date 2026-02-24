@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Problem Statement](#problem-statement)
 - [The Root Cause](#the-root-cause)
   - [How Element Proxies Work (Current Implementation)](#how-element-proxies-work-current-implementation)
@@ -23,11 +24,27 @@
 - [Related Issues](#related-issues)
 - [References](#references)
 
+## Overview
+
+This document analyzes Issue #26: the vector element proxy invalidation problem that occurs when Python code holds a reference to a vector element and then modifies the vector, causing reallocation. It provides detailed memory diagrams showing the problem, explains the root cause, evaluates solution options, and recommends the parent tracking approach.
+
+**Target Audience:** Developers understanding memory safety issues, implementing the fix, or learning about vector reallocation hazards.
+
+**Key Topics:** Vector reallocation mechanics, proxy invalidation scenarios, memory address diagrams, solution options comparison, and parent tracking recommendation.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Problem Statement
 
 When Python holds a proxy to a vector element and then appends to the same vector, the proxy can point to freed memory, causing crashes or data corruption.
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## The Root Cause
 
@@ -53,6 +70,9 @@ return StructProxy_New(bstruct);  // Proxy stores elemPtr
 - **Existing pointers become invalid**
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Concrete Example with Memory Addresses
 
@@ -136,6 +156,9 @@ Python Proxy (unchanged):
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Impact
 
 ### Possible Outcomes
@@ -149,6 +172,9 @@ Python Proxy (unchanged):
 - Can corrupt unrelated data structures
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Solution Options
 
@@ -253,6 +279,9 @@ enemy.health = 100           # ✅ Safe: resolves new address from index
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Recommendation
 
 **Implement Option B** for production safety.
@@ -267,11 +296,17 @@ It provides:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Implementation Guide (Option B)
 
 See separate implementation plan in this document's appendix or in code comments.
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Related Issues
 
@@ -280,8 +315,14 @@ See separate implementation plan in this document's appendix or in code comments
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## References
 
 - C++ Standard: `std::vector` reallocation guarantee (§23.3.11.5)
 - Python C API: Object lifetime management
 - `python_proxy.cpp`: Current proxy implementation
+
+[Back to Table of Contents](#table-of-contents)
+

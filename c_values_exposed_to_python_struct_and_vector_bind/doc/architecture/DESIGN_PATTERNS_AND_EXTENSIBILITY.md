@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [I. Core Design Patterns Used](#i-core-design-patterns-used)
   - [Pattern 1: Type-Erasure with void* Pointers](#pattern-1-type-erasure-with-void-pointers)
   - [Pattern 2: Function Pointers for Type-Specific Operations](#pattern-2-function-pointers-for-type-specific-operations)
@@ -37,6 +38,19 @@
   - [Runtime Registration Points](#runtime-registration-points)
   - [Customization Points](#customization-points)
 - [VII. Summary: Design Decisions Hierarchy](#vii-summary-design-decisions-hierarchy)
+
+## Overview
+
+This document explains the design patterns, trade-offs, and extensibility mechanisms used in the C++/Python integration framework. It provides detailed analysis of why certain patterns were chosen over alternatives, performance characteristics of different approaches, and step-by-step guides for extending the system with new types or language bindings.
+
+**Target Audience:** Developers making design decisions, adding new features, optimizing performance, or adding support for other scripting languages.
+
+**Key Topics:** Design pattern justifications, performance trade-offs, extensibility guides for adding new types, multi-language binding strategies, and common pitfalls with solutions.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## I. Core Design Patterns Used
 
@@ -722,6 +736,9 @@ State 5: Element Destroyed
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## II. Design Trade-offs and Decisions
 
 ### Trade-off 1: Pointer Arithmetic vs. Container Wrapper
@@ -837,6 +854,9 @@ static std::unordered_map<std::string, BoundValue*> g_scalars;
 - Supports Lua/Ruby/Perl with same registry
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## III. Extensibility Framework
 
@@ -1040,6 +1060,9 @@ To Add Lua:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## IV. Performance Characteristics
 
 ### Memory Layout
@@ -1122,6 +1145,9 @@ for enemy in cpp.enemies:
 **Overall Assessment:** Fast path (struct field read) is extremely cache-friendly. Hot loops should perform well.
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## V. Common Pitfalls and Solutions
 
@@ -1439,6 +1465,9 @@ Proxy resolution:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## VI. Extension API for User-Defined Types
 
 ### Compile-Time Registration Points
@@ -1492,6 +1521,9 @@ class PyBoundValue<MyCustomType> : public PyBoundValue {
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## VII. Summary: Design Decisions Hierarchy
 
 ```
@@ -1517,3 +1549,6 @@ All decisions enable:
 ```
 
 This design prioritizes **extensibility through composition** over inheritance, **static knowledge** over runtime polymorphism, and **user experience** over implementation complexity.
+
+[Back to Table of Contents](#table-of-contents)
+

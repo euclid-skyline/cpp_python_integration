@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [1) Architecture Overview](#1-architecture-overview)
 - [2) File-by-File Guide](#2-file-by-file-guide)
   - [[main.cpp](main.cpp)](#maincpp)
@@ -29,7 +30,20 @@
   - [Testing enhancements](#testing-enhancements)
 - [6) Quick Reference](#6-quick-reference)
 
+## Overview
+
+This document provides a file-by-file breakdown of the source code, explaining the purpose of each file, key functions and variables, design perspectives, and memory safety patterns. It also includes a comprehensive list of potential improvements and enhancements organized by category.
+
+**Target Audience:** New developers learning the codebase, code reviewers, and developers planning enhancements.
+
+**Key Topics:** File-by-file guide, memory safety architecture, design trade-offs, known limitations, and improvement suggestions.
+
+---
+
 This document explains the source code structure, key functions and variables, and the overall design. It also lists improvement and enhancement ideas.
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## 1) Architecture Overview
 
@@ -44,6 +58,9 @@ Core flow:
 2. The `cpp` Python module resolves attribute access via `cpp_module_getattr()`.
 3. Structs and vectors are exposed through `StructProxy` and `VectorProxy`.
 4. Python reads/writes fields or vector items via proxy methods.
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## 2) File-by-File Guide
 
@@ -231,6 +248,9 @@ Core flow:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 3) Memory Safety Architecture
 
 The system implements two critical safety patterns that eliminate memory corruption bugs:
@@ -415,6 +435,9 @@ print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 4) Design Perspective and Tradeoffs
 
 - **Type erasure through metadata** keeps proxy code generic, avoiding templates in Python-facing layers.
@@ -427,6 +450,9 @@ print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
 - **Reference counting**: All proxy factory functions return NEW references with correct Python refcount semantics (Issue #39).
 - **Parent-child lifetime**: Element proxies hold references to parent proxies, preventing dangling pointers (Issue #48).
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 5) Known Limitations (Behavioral)
 
 - No slicing support for vectors (`vec[1:3]`).
@@ -434,6 +460,9 @@ print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
 - No string `repr` or `str` for proxies (debugging is raw object print).
 - Iterator and len are implemented, but other Python container protocols remain limited.
 - Multi-threaded access to C++ data structures requires external synchronization (Python GIL provides some protection for proxy creation).
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## 5) Improvements and Enhancements
 
@@ -457,6 +486,9 @@ print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
 - Add stress tests with large nested vectors to measure performance.
 - Add tests that validate string conversion for non-ASCII input.
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 6) Quick Reference
 
 - Entry point: [main.cpp](main.cpp)
@@ -465,3 +497,6 @@ print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
 - Scalar bindings: [python_bind.hpp](python_bind.hpp)
 - Binding interface: [value_interface.hpp](value_interface.hpp)
 - Struct reflection: [reflection_struct.hpp](reflection_struct.hpp)
+
+[Back to Table of Contents](#table-of-contents)
+

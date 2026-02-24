@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [I. Entry Point and Initialization](#i-entry-point-and-initialization)
   - [main.cpp: Application Lifecycle](#maincpp-application-lifecycle)
     - [`int main()`](#int-main)
@@ -53,6 +54,19 @@
 - [VII. Summary: Data Flow Example](#vii-summary-data-flow-example)
   - [Complete Example Walkthrough: `cpp.enemies[0].health = 50`](#complete-example-walkthrough-cppenemies0health--50)
   - [Memory Map at Execution](#memory-map-at-execution)
+
+## Overview
+
+This document provides function-by-function implementation details and data flow analysis for every major component of the C++/Python integration framework. Each function is explained with execution flow diagrams, parameter descriptions, return value semantics, and memory management patterns.
+
+**Target Audience:** Developers implementing features, debugging issues, or understanding how specific operations work internally.
+
+**Key Topics:** Function execution flows, data flow through the system, type conversion mechanics, memory management patterns, and complete end-to-end operation walkthroughs.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## I. Entry Point and Initialization
 
@@ -114,6 +128,9 @@
 - Works across Windows, Linux, macOS without platform-specific code
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## II. Module and Dynamic Attribute Resolution
 
@@ -250,6 +267,9 @@ Output: PyObject* (module)
 - Result: Dynamic attribute access works!
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## III. Structure Reflection and Field Access
 
@@ -461,6 +481,9 @@ player_fields = len(cpp.player)  # Returns 3 if Player has 3 fields
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## IV. Vector Reflection and Element Access
 
@@ -811,6 +834,9 @@ Loop N+1:   index (N) >= size (N) → StopIteration, end loop
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## V. Type Conversion and Binding
 
 ### value_interface.hpp: Registry and Binding
@@ -991,6 +1017,9 @@ PyObject *other = PyUnicode_FromString("X");  // Python reallocates!
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## VI. Memory Management and Lifetime
 
@@ -1738,6 +1767,9 @@ For complete details, see the dedicated memory safety documentation:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## VII. Summary: Data Flow Example
 
 ### Complete Example Walkthrough: `cpp.enemies[0].health = 50`
@@ -1805,3 +1837,6 @@ When we read .health:
 ```
 
 This completes the comprehensive function reference.
+
+[Back to Table of Contents](#table-of-contents)
+

@@ -1,13 +1,8 @@
 # Complete Ownership Models Guide
 
-## Issue 44: Comprehensive Documentation of Ownership Models
-
-This document provides authoritative documentation of all ownership semantics in the CPP-Python binding system, resolving Issue 44 and serving as the canonical reference for understanding data lifetime, reference counting, and memory management patterns.
-
----
-
 ## Table of Contents
 
+- [Overview](#overview)
 1. [Ownership Fundamentals](#ownership-fundamentals)
 2. [Registry Ownership (g_values)](#registry-ownership-g_values)
 3. [Scalar Type Ownership](#scalar-type-ownership)
@@ -18,7 +13,20 @@ This document provides authoritative documentation of all ownership semantics in
 8. [Thread Safety & Singleton Management](#thread-safety--singleton-management)
 9. [Ownership Decision Tree](#ownership-decision-tree)
 
+## Overview
+
+**Issue 44: Comprehensive Documentation of Ownership Models**
+
+This document provides authoritative documentation of all ownership semantics in the CPP-Python binding system, resolving Issue 44 and serving as the canonical reference for understanding data lifetime, reference counting, and memory management patterns.
+
+**Target Audience:** Developers implementing features involving ownership, debugging memory issues, or understanding the complete memory management architecture.
+
+**Key Topics:** Registry ownership, scalar vs complex type ownership, wrapper pattern, parent-child reference management, Python reference counting, and thread safety.
+
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Ownership Fundamentals
 
@@ -73,6 +81,9 @@ This document provides authoritative documentation of all ownership semantics in
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Registry Ownership (g_values)
 
@@ -151,6 +162,9 @@ player_proxy = cpp.player  // Creates NEW BoundStruct wrapper, NOT taking from g
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Scalar Type Ownership
 
 ### Pattern: Copy-on-Access
@@ -212,6 +226,9 @@ h1 is h2         # False (different objects!)
 - Simple copy semantics understood by everyone
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Complex Type Ownership (Structs & Vectors)
 
@@ -326,6 +343,9 @@ Cleanup:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Wrapper Ownership Pattern
 
 ### Formal Definition
@@ -370,6 +390,9 @@ typedef struct {
 - Python GC timing: Parent must outlive child (refcount keeps it alive)
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Parent-Child Proxy Reference Management
 
@@ -491,6 +514,9 @@ return VectorProxy_New(bvec, self); // ◄─ Pass parent vector proxy
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Python Reference Counting
 
 ### C-API Reference Semantics
@@ -546,6 +572,9 @@ return g_cpp_proxy_instance;  // Caller must Py_DECREF
 - Asymmetry resolved by documentation
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Thread Safety & Singleton Management
 
@@ -628,6 +657,9 @@ PyObject *create_cpp_proxy()
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Ownership Decision Tree
 
 **Use this tree to understand ownership for any proxy operation:**
@@ -680,6 +712,9 @@ Start: I'm accessing a C++ variable from Python
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Summary: Ownership Models at a Glance
 
 | Type | Storage | Registry | Proxy | Parent | Reference Count |
@@ -693,9 +728,15 @@ Start: I'm accessing a C++ variable from Python
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## See Also
 
 - **WRAPPER_OWNERSHIP_PATTERN.md** - Deep dive into wrapper pattern
 - **SCALAR_VS_COMPLEX_OWNERSHIP.md** - Scalar vs complex comparison
 - **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** - Dynamic element resolution
 - **python_proxy.cpp** - Implementation details (lines 55-290 for singleton, 222-240 for proxy defs)
+
+[Back to Table of Contents](#table-of-contents)
+

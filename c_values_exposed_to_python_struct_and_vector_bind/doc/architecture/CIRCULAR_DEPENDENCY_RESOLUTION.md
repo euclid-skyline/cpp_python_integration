@@ -29,6 +29,9 @@ Option B's parent tracking feature required `BoundStruct` to hold a pointer to `
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## The Problem
 
 ### Dependency Graph (Naive Approach)
@@ -67,6 +70,9 @@ class BoundStruct {
 **Result:** When reflection_vector.hpp is processed, reflection_struct.hpp is included first, and BoundVector isn't defined yet when BoundStruct::instance() is compiled.
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## The Solution: Two-Phase Include Strategy
 
@@ -167,6 +173,9 @@ User code continues
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Why This Pattern Works
 
 ### ✅ Advantages
@@ -208,6 +217,9 @@ Our solution exploits this: forward declarations provide incomplete types for po
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Visual Diagram: Include Chain
 
 ```
@@ -236,6 +248,9 @@ reflection_struct.hpp
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Comparison: Alternative Approaches
 
@@ -272,6 +287,9 @@ class BoundStruct { ... };
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## For Future Developers
 
 ### When Adding New Features
@@ -293,6 +311,9 @@ If you add new methods to `BoundStruct` or `BoundVector` that call each other:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Summary
 
 | Aspect | Solution |
@@ -307,8 +328,14 @@ If you add new methods to `BoundStruct` or `BoundVector` that call each other:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## References
 
 - **Implementation Details:** See `PARENT_TRACKING_IMPLEMENTATION_GUIDE.md`
 - **Problem Context:** See `VECTOR_ELEMENT_PROXY_INVALIDATION.md`
 - **Code Review:** See `CODE_REVIEW.md` Issue 26
+
+[Back to Table of Contents](#table-of-contents)
+

@@ -42,6 +42,9 @@ This framework allows you to expose C++ variables (scalars, structs, and vectors
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Quick Start
 
 ### Minimal C++ Example
@@ -103,6 +106,9 @@ print(f"Updated health: {cpp.player.health}")
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Defining C++ Structures
 
@@ -186,6 +192,9 @@ inline const StructInfo *get_struct_info<Enemy>() {
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Defining Vectors
 
@@ -503,6 +512,9 @@ print(len(cpp.enemy_waves[-1]))                # 2 enemies in last wave
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Binding Variables to Python
 
 ### Binding Scalar Types
@@ -560,6 +572,9 @@ int main() {
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Python API Reference
 
@@ -703,6 +718,9 @@ print(cpp.enemy_waves[-1][-1].name) # Last enemy name
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Supported Operations
 
 ### ✅ Fully Supported
@@ -784,6 +802,9 @@ print(cpp.enemy_waves[-1][-1].name) # Last enemy name
 - **Custom types:** Only built-in and reflected structs
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Complete Examples
 
@@ -1050,6 +1071,9 @@ for wave_idx in range(len(cpp.enemy_waves)):
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Performance Characteristics
 
 ### Time Complexity
@@ -1078,6 +1102,9 @@ for wave_idx in range(len(cpp.enemy_waves)):
 - **Write:** O(n) - where n is string length (copies content)
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Memory Management
 
@@ -1135,6 +1162,9 @@ Py_Finalize();  // Finalizes Python and proxies
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Thread Safety
 
 ### Current Implementation: NOT THREAD SAFE
@@ -1176,6 +1206,9 @@ cpp.health = result;
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Troubleshooting
 
@@ -1275,6 +1308,9 @@ Py_Finalize();  // Now cleanup
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Summary
 
 This framework provides seamless C++ ↔ Python integration for:
@@ -1285,3 +1321,6 @@ This framework provides seamless C++ ↔ Python integration for:
 - ✅ Zero-copy access to C++ data
 
 Use this guide to integrate C++ game logic with Python scripting safely and efficiently!
+
+[Back to Table of Contents](#table-of-contents)
+

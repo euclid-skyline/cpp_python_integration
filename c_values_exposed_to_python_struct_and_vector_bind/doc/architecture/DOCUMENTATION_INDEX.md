@@ -35,6 +35,9 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 🎯 Reading Paths Based on Your Goals
 
 ### Path 1: "I want to understand the architecture"
@@ -109,6 +112,9 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 🔍 Quick Reference: What to Read for Common Questions
 
 ### "What is BoundStruct?"
@@ -136,6 +142,9 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 → DESIGN_PATTERNS_AND_EXTENSIBILITY.md Section V (Common Pitfalls)
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## 📚 Documentation Files
 
@@ -383,6 +392,9 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## 📖 File Organization
 
 ```
@@ -414,6 +426,9 @@ Project Root
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## 🏗️ Three-Layer Architecture Summary
 
@@ -459,3 +474,6 @@ This documentation set was created to provide:
 - **Extensibility:** Foundation for adding new languages/features
 
 **Last Updated:** With completion of Issues 29-49 (17 FIXED, 4 UNDER REVIEW) and comprehensive ownership documentation.
+
+[Back to Table of Contents](#table-of-contents)
+

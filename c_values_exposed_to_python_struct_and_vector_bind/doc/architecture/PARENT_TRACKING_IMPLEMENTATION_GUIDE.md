@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Purpose](#purpose)
 - [Problem Being Solved](#problem-being-solved)
 - [Solution: Parent Tracking with Dynamic Resolution](#solution-parent-tracking-with-dynamic-resolution)
@@ -30,9 +31,25 @@
 - [Backwards Compatibility](#backwards-compatibility)
 - [Summary](#summary)
 
+## Overview
+
+This document provides the complete implementation guide for parent tracking (Option B) - the solution to Issue #26 that prevents use-after-free errors when vector element proxies outlive vector reallocations. It includes detailed code changes, circular dependency resolution strategies, testing approaches, and migration guidance.
+
+**Target Audience:** Developers implementing the parent tracking solution, resolving Issue #26, or understanding dynamic element resolution patterns.
+
+**Key Topics:** Parent tracking architecture, circular dependency resolution, implementation changes across files, testing strategies, and performance considerations.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Purpose
 
 This document provides the complete implementation guide for **parent tracking** - the solution that prevents use-after-free errors when vector element proxies outlive vector reallocations.
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Problem Being Solved
 
@@ -46,6 +63,9 @@ enemy = cpp.enemies[0]        # StructProxy holds pointer to enemies[0]
 cpp.enemies.append_new()      # Vector reallocates, old memory freed
 print(enemy.health)           # ❌ CRASH: pointer now points to freed memory
 ```
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Solution: Parent Tracking with Dynamic Resolution
 
@@ -62,6 +82,9 @@ cpp.enemies.append_new()      # Vector reallocates
 print(enemy.health)           # ✓ SAFE: Resolves fresh pointer on access
 ```
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Implementation Overview
 
 This guide covers 6 architectural changes:
@@ -77,6 +100,9 @@ This guide covers 6 architectural changes:
 - [CIRCULAR_DEPENDENCY_RESOLUTION.md](CIRCULAR_DEPENDENCY_RESOLUTION.md) - Header architecture
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Architecture Changes
 
@@ -389,6 +415,9 @@ return VectorProxy_New(bvec);
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Circular Dependency Resolution
 
 ### The Problem
@@ -483,6 +512,9 @@ Result: One include statement gives complete types, no manual ordering needed.
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Testing
 
 ### Test Case 1: Element Proxy After Append
@@ -512,6 +544,9 @@ e2.health = 200  # ✅ Safe
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Performance Considerations
 
 ### Overhead
@@ -525,6 +560,9 @@ e2.health = 200  # ✅ Safe
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Migration Path
 
 1. Update `BoundStruct` / `BoundVector` headers
@@ -535,6 +573,9 @@ e2.health = 200  # ✅ Safe
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Backwards Compatibility
 
 This change is **internal only**:
@@ -543,6 +584,9 @@ This change is **internal only**:
 - Only C++ implementation changes
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Summary
 
@@ -556,3 +600,6 @@ This change is **internal only**:
 - Safe against reallocation
 
 **Key insight:** Indirection through index makes proxies **stable** across vector growth.
+
+[Back to Table of Contents](#table-of-contents)
+

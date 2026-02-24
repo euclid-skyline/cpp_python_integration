@@ -45,6 +45,9 @@ Issue #18 (Double-Free Risk in Root Proxy Attribute Access) revealed a critical 
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 1: Ownership Fundamentals
 
 ### The Central Problem
@@ -76,6 +79,9 @@ x = cpp.x            # Triggers getattr → creates Python value
 **The Ownership Question:** Who owns the wrapper (BoundStruct*, BoundVector*) after access?
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Part 2: Scalar Types (int, float, bool, string)
 
@@ -180,6 +186,9 @@ del c          # Deletes PyLong #3, no effect on a or b
 - **Result:** Issue #18 is not applicable
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Part 3: Struct Types
 
@@ -331,6 +340,9 @@ public:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 4: Vector Types
 
 ### Design Before Fix: Shared Ownership (VULNERABLE)
@@ -449,6 +461,9 @@ elem_proxy->get_instance_ptr()  // ← Resolves fresh pointer
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 5: Comparison Matrix
 
 ### Ownership Model Summary
@@ -505,6 +520,9 @@ case ValueType::Vector:
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Part 6: Access Flow Diagrams
 
@@ -613,6 +631,9 @@ Python: v = cpp.enemies
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 7: Practical Examples
 
 ### Example 1: Multiple Accesses
@@ -685,6 +706,9 @@ print(e2.health)     # ✓ 150 (both proxies see same data)
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 8: Root Cause of Issue #18
 
 ### What Made Issue #18 Possible
@@ -715,6 +739,9 @@ The wrapper ownership pattern added:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Part 9: Memory Safety Summary
 
 ### The Three-Tier Safety Model
@@ -738,6 +765,9 @@ The wrapper ownership pattern added:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Conclusion
 
 **Scalars are inherently safe** because they create independent value copies at access time, eliminating any shared ownership concerns.
@@ -747,3 +777,6 @@ The wrapper ownership pattern added:
 **The design principle:** If you don't share ownership, you can't have double-free. If you don't store raw pointers to container elements, you can't have use-after-free.
 
 This architecture demonstrates how careful ownership management can eliminate entire classes of memory corruption bugs while maintaining zero-copy access to underlying C++ data.
+
+[Back to Table of Contents](#table-of-contents)
+

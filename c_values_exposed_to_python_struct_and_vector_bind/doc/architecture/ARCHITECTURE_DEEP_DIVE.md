@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [I. The Three-Layer Design Philosophy](#i-the-three-layer-design-philosophy)
   - [The Problem with Traditional Approaches](#the-problem-with-traditional-approaches)
   - [The Solution: Three Independent Layers](#the-solution-three-independent-layers)
@@ -38,6 +39,19 @@
   - [Safety Pattern 3: Thread-Safe Singleton Initialization (Issue #34)](#safety-pattern-3-thread-safe-singleton-initialization-issue-34)
   - [Safety Pattern 4: Python Reference Counting Semantics (Issue #39)](#safety-pattern-4-python-reference-counting-semantics-issue-39)
   - [Comprehensive Safety Architecture Summary](#comprehensive-safety-architecture-summary)
+
+## Overview
+
+This document provides a comprehensive deep dive into the architecture of the C++/Python integration framework. It explains the three-layer design philosophy that enables language-agnostic C++ data reflection, the design patterns used throughout the system, and how these patterns enable multi-language scripting support. This is the foundational architectural document that explains the "why" behind every major design decision.
+
+**Target Audience:** Developers who want to understand the system architecture, design rationale, and how to extend it for other languages (Lua, Ruby, etc.).
+
+**Key Topics:** Three-layer separation of concerns, pure C++ reflection without language dependencies, type-erasure patterns, memory safety patterns, and multi-language extensibility.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## I. The Three-Layer Design Philosophy
 
@@ -101,6 +115,9 @@ LAYER 1: PURE C++ REFLECTION LAYER
 ```
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## II. Layer 1: Pure C++ Reflection – The Foundation
 
@@ -318,6 +335,9 @@ VectorInfo enemies_info{
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## III. Layer 2: Binding Bridge – Type Detection & Registration
 
 ### File: value_interface.hpp (~150 lines)
@@ -474,6 +494,9 @@ class PyInterface {
 4. **Single Source Truth:** All features (introspection, validation) use one registry
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## IV. Layer 3: Python Integration – Bringing It All Together
 
@@ -752,6 +775,9 @@ my_string = str;  // std::string constructor copies immediately!
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## V. Design Patterns and Their Justifications
 
 ### Pattern 1: Type-Erasure with void*
@@ -811,6 +837,9 @@ my_string = str;  // std::string constructor copies immediately!
 - Type system enforced by compiler (catch errors early)
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## VI. Future Multi-Language Extensions
 
@@ -872,6 +901,9 @@ lua_pushinteger(L, *(int*)field_ptr);  // Lua-specific
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## VII. Summary: Layers and Concerns
 
 | Layer | Files | Concern | Python.h? |
@@ -897,6 +929,9 @@ lua_pushinteger(L, *(int*)field_ptr);  // Lua-specific
 - Clear responsibility boundaries for maintenance
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## VIII. Memory Safety Architecture
 
@@ -1512,3 +1547,6 @@ for t in threads: t.start()
 - [PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](PARENT_TRACKING_IMPLEMENTATION_GUIDE.md) - Parent tracking implementation (Issue #26)
 - [CIRCULAR_DEPENDENCY_RESOLUTION.md](CIRCULAR_DEPENDENCY_RESOLUTION.md) - Header architecture
 - [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) - Complete ownership and thread safety reference (Issues #34, #39, #48)
+
+[Back to Table of Contents](#table-of-contents)
+

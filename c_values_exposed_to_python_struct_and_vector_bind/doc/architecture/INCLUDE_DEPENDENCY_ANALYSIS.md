@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Summary](#summary)
 - [Include Guard Mechanism](#include-guard-mechanism)
 - [Dependency Hierarchy](#dependency-hierarchy)
@@ -25,13 +26,32 @@
 
 ---
 
+## Overview
+
+This document analyzes the include dependency structure of all header files in the project, verifying that include guards are properly used and that there are no circular dependencies. It documents the dependency hierarchy and explains the best practices followed to ensure clean compilation.
+
+**Target Audience:** Developers working on header files, resolving compilation issues, or maintaining the include structure.
+
+**Key Topics:** Include guard mechanism (`#pragma once`), dependency hierarchy levels, circular dependency prevention, and forward declaration usage.
+
+---
+
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Summary
 
 All header files use `#pragma once` for include guards, which is the modern C++ standard supported by all major compilers (GCC, Clang, MSVC). The include dependency structure forms a clean DAG (Directed Acyclic Graph) with no circular dependencies.
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Status: ✅ VERIFIED SAFE
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Include Guard Mechanism
 
@@ -48,6 +68,9 @@ All header files use:
 - ✓ Supported by all modern compilers
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Dependency Hierarchy
 
@@ -90,6 +113,9 @@ All header files use:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Dependency Graph
 
 ```
@@ -128,6 +154,9 @@ All header files use:
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Circular Dependency Check
 
 **Result: NO CIRCULAR DEPENDENCIES FOUND**
@@ -144,6 +173,9 @@ Verification:
 **No header includes anything from a higher level**, ensuring a clean dependency tree.
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Forward Declarations
 
@@ -163,6 +195,9 @@ This allows other files to reference these types without including the full impl
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Best Practices Followed
 
 1. ✅ **`#pragma once`** used consistently
@@ -173,6 +208,9 @@ This allows other files to reference these types without including the full impl
 6. ✅ **Standard library includes** properly ordered
 
 ---
+
+[Back to Table of Contents](#table-of-contents)
+
 
 ## Recommendations
 
@@ -197,6 +235,9 @@ The include structure is safe and well-designed. No changes needed.
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Comparison with Traditional Guards
 
 **Old Style (NOT used):**
@@ -217,6 +258,9 @@ The project correctly uses the modern approach.
 
 ---
 
+[Back to Table of Contents](#table-of-contents)
+
+
 ## Conclusion
 
 **Issue 14 Resolution: ✅ VERIFIED SAFE**
@@ -228,3 +272,6 @@ The include guard structure in this project follows modern C++ best practices:
 - Minimal coupling between modules
 
 No changes or fixes required. The current structure is production-ready.
+
+[Back to Table of Contents](#table-of-contents)
+
