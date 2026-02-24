@@ -356,7 +356,8 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     }
 
     default:
-        PyErr_SetString(PyExc_RuntimeError, "Unsupported field type");
+        PyErr_Format(PyExc_RuntimeError, "Unsupported field type: %d",
+                     static_cast<int>(field->type));
         return nullptr;
     }
 }
@@ -438,7 +439,8 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
         return -1;
 
     default:
-        PyErr_SetString(PyExc_RuntimeError, "Unsupported field type");
+        PyErr_Format(PyExc_RuntimeError, "Unsupported field type: %d",
+                     static_cast<int>(field->type));
         return -1;
     }
 }

@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 41, 46, 47, 49, and 48 have been FIXED and deployed.
+**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 41, 42, 46, 47, 48, and 49 have been FIXED and deployed.
 
 ---
 
@@ -733,13 +733,13 @@ return pyval->to_python();
 ---
 
 ### Issue 42: Uninformative Error Messages
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp`, line 204  
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 359, 441  
 **Severity:** LOW  
 **Category:** Debugging / Developer Experience
 
 **Problem:**
-Error messages don't include context about what failed:
+Error messages didn't include context about what failed:
 
 ```cpp
 default:
@@ -748,9 +748,11 @@ default:
     // Should identify which type was unsupported
 ```
 
-When this error occurs, developers have no information about which type caused the problem.
+When this error occurred, developers had no information about which type caused the problem.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+Updated both occurrences (in StructProxy_getattro and StructProxy_setattro) to include type information:
+
 ```cpp
 default:
     PyErr_Format(PyExc_RuntimeError, "Unsupported field type: %d", 
@@ -759,6 +761,9 @@ default:
 ```
 
 **Benefit:** Better debugging experience with actionable error messages.
+
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Updated error messages to include field type value
 
 ---
 
@@ -1153,8 +1158,8 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | CRITICAL | 0 | — |
 | HIGH | 4 | 34, 36, 37 |
 | MEDIUM | 3 | 38, 39, 40 |
-| LOW | 4 | 42, 43, 44, 45 |
-| **FIXED** | **10** | **29, 30, 31, 32, 33, 35, 41, 46, 47, 48, 49** |
+| LOW | 3 | 43, 44, 45 |
+| **FIXED** | **11** | **29, 30, 31, 32, 33, 35, 41, 42, 46, 47, 48, 49** |
 
 **Distribution by Category:**
 
@@ -1162,7 +1167,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | Type Initialization | 1 | 29 ✅ |
 | Memory Management | 1 | 48 ✅ |
-| Error Messaging / UX | 2 | 30 ✅, 42, 49 ✅ |
+| Error Messaging / UX | 2 | 30 ✅, 42 ✅, 49 ✅ |
 | Null Safety | 5 | 31 ✅, 33 ✅, 36, 46 ✅, — |
 | Resource Leak | 2 | 32 ✅, 35 ✅, 37 |
 | Thread Safety | 1 | 34 |
@@ -1187,10 +1192,11 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 5. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
 6. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
 7. **Issue 41** ✅ FIXED - Null checks for VectorInfo in reflection methods
-8. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
-9. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
-10. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
-11. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
+8. **Issue 42** ✅ FIXED - Error messages include field type information
+9. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
+10. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
+11. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+12. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
 
 ### Immediate Action Items (Next Sprint)
 All critical issues have been resolved.
@@ -1201,8 +1207,7 @@ All critical issues have been resolved.
 3. **Issue 37** - Review vector append error handling (HIGH)
 
 ### Nice to Have (Development Backlog)
-11. **Issue 30** - Improve error message clarity in cppproxy_getattro (LOW)
-12. Issues 38-45 - Code quality, documentation, and style improvements
+Issues 38-40, 43-45 - Code quality, documentation, and style improvements
 
 ---
 
