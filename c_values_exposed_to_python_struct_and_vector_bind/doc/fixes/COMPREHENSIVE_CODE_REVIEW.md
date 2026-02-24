@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 41, 42, 46, 47, 48, and 49 have been FIXED and deployed.
+**Status:** All critical and high-priority error handling issues fixed. Issues 29, 30, 31, 32, 33, 35, 36, 41, 42, 46, 47, 48, and 49 have been FIXED and deployed.
 
 ---
 
@@ -430,31 +430,42 @@ case ValueType::Vector:
 ---
 
 ### Issue 36: Unchecked PyUnicode_AsUTF8 Return Values
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `python_proxy.cpp`, multiple locations  
+**Status:** ✅ FIXED  
+**File:** `python_proxy.cpp`, lines 75, 165, 300, 373, 429, 694  
 **Severity:** HIGH  
 **Category:** Null Safety
 
 **Problem:**
-While some locations check the return from `PyUnicode_AsUTF8()`, a comprehensive audit is needed to ensure all uses consistently guard against nullptr.
+Previously, while some locations checked the return from `PyUnicode_AsUTF8()`, a comprehensive audit was needed to ensure all uses consistently guard against nullptr.
 
-Example of correct checking:
+**Solution Applied:** ✅
+Systematic audit performed of all `PyUnicode_AsUTF8()` calls in python_proxy.cpp. Findings:
+
+| Location | Function | Status |
+|----------|----------|--------|
+| Line 75 | cppproxy_getattro | ✅ Has null check |
+| Line 165 | cppproxy_setattro | ✅ Has null check |
+| Line 300 | StructProxy_getattro | ✅ Has null check |
+| Line 373 | StructProxy_setattro | ✅ Has null check |
+| Line 429 | StructProxy_setattro (String case) | ✅ Has null check |
+| Line 694 | VectorProxy_setitem (String case) | ✅ Has null check |
+| Line 923 | VectorProxy_append_simple | ✅ Uses PyUnicode_AsUTF8String with null check |
+
+**Verified Pattern:**
+All locations follow the defensive pattern:
 ```cpp
 const char *name = PyUnicode_AsUTF8(attr);
 if (!name)
 {
-    PyErr_SetString(PyExc_TypeError, "Attribute name must be a string");
-    return -1;  // ✓ Checking is present here
+    PyErr_SetString(PyExc_TypeError, "... must be a string");
+    return nullptr;  // or -1 for setter functions
 }
 ```
 
-But without systematic audit, other locations may be missing checks.
+**Result:** All `PyUnicode_AsUTF8()` calls are consistently guarded with null checks. No missing validations found.
 
-**Root Cause:** Inconsistent null validation across call sites.
-
-**Impact:** Potential null pointer dereference if string conversion fails.
-
-**Recommended Action:** Systematic audit of all `PyUnicode_AsUTF8()` calls to ensure every one has a null check before dereferencing the returned pointer.
+**Files Modified:**
+- [python_proxy.cpp](python_proxy.cpp) - Verified all calls have proper null checks
 
 ---
 
@@ -1156,10 +1167,10 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Severity | Count | Issues |
 |----------|-------|--------|
 | CRITICAL | 0 | — |
-| HIGH | 4 | 34, 36, 37 |
+| HIGH | 3 | 34, 37 |
 | MEDIUM | 3 | 38, 39, 40 |
 | LOW | 3 | 43, 44, 45 |
-| **FIXED** | **11** | **29, 30, 31, 32, 33, 35, 41, 42, 46, 47, 48, 49** |
+| **FIXED** | **12** | **29, 30, 31, 32, 33, 35, 36, 41, 42, 46, 47, 48, 49** |
 
 **Distribution by Category:**
 
@@ -1191,20 +1202,20 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 4. **Issue 32** ✅ FIXED - Wrapper cleanup on proxy creation failure
 5. **Issue 33** ✅ FIXED - Null check for StructProxy bound pointer
 6. **Issue 35** ✅ FIXED - Wrapper cleanup in StructProxy_getattro nested types
-7. **Issue 41** ✅ FIXED - Null checks for VectorInfo in reflection methods
-8. **Issue 42** ✅ FIXED - Error messages include field type information
-9. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
-10. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
-11. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
-12. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
+7. **Issue 36** ✅ FIXED - All PyUnicode_AsUTF8 calls verified with null checks
+8. **Issue 41** ✅ FIXED - Null checks for VectorInfo in reflection methods
+9. **Issue 42** ✅ FIXED - Error messages include field type information
+10. **Issue 46** ✅ FIXED - Null checks for proxy->bound in append operations
+11. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
+12. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
+13. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
 
 ### Immediate Action Items (Next Sprint)
 All critical issues have been resolved.
 
 ### Important (Following Sprint)
 1. **Issue 34** - Add thread safety to singleton initialization (HIGH)
-2. **Issue 36** - Audit and fix PyUnicode_AsUTF8 null checks (HIGH)
-3. **Issue 37** - Review vector append error handling (HIGH)
+2. **Issue 37** - Review vector append error handling (HIGH)
 
 ### Nice to Have (Development Backlog)
 Issues 38-40, 43-45 - Code quality, documentation, and style improvements
