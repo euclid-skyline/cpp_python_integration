@@ -697,5 +697,5 @@ Start: I'm accessing a C++ variable from Python
 
 - **WRAPPER_OWNERSHIP_PATTERN.md** - Deep dive into wrapper pattern
 - **SCALAR_VS_COMPLEX_OWNERSHIP.md** - Scalar vs complex comparison
-- **OPTION_B_IMPLEMENTATION_GUIDE.md** - Dynamic element resolution
+- **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** - Dynamic element resolution
 - **python_proxy.cpp** - Implementation details (lines 55-290 for singleton, 222-240 for proxy defs)

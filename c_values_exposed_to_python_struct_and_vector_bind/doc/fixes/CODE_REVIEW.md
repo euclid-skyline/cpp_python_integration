@@ -253,11 +253,11 @@ Vector element proxies stored raw pointers to elements inside `std::vector`. Whe
   1. `reflection_vector.hpp`: Uses forward declarations instead of includes
   2. `reflection_struct.hpp`: Declares `instance()` but implements it inline at the end of file after including `reflection_vector.hpp`
   3. This ensures `BoundVector` is fully defined when implementation is compiled
-  - See `doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md` for detailed explanation
+  - See `doc/architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md` for detailed explanation
 
 **Documentation:**
 - `doc/architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md`: Problem analysis with memory diagrams
-- `doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md`: Complete implementation details including circular dependency resolution
+- `doc/architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md`: Complete implementation details including circular dependency resolution
 
 ---
 
@@ -646,7 +646,7 @@ The project now has:
 - `INCLUDE_DEPENDENCY_ANALYSIS.md` - Architecture verification
 - `doc/architecture/USAGE_GUIDE.md` - Usage documentation
 - `doc/architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md` - Issue 26 analysis and solution
-- `doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md` - Dynamic resolution implementation
+- `doc/architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md` - Dynamic resolution implementation
 - `TESTING_IMPROVEMENTS.md` - Testing enhancement details
 
 ### Deployment Readiness

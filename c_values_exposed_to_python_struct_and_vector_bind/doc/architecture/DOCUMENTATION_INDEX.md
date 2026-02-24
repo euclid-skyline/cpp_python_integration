@@ -62,7 +62,7 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 1. Read: **OWNERSHIP_MODELS_GUIDE.md** → Sections 1-4 (Fundamentals through Complex Types)
 2. Read: **SCALAR_VS_COMPLEX_OWNERSHIP.md** → Comparison matrix and examples
 3. Read: **WRAPPER_OWNERSHIP_PATTERN.md** → Detailed pattern explanation
-4. Read: **OPTION_B_IMPLEMENTATION_GUIDE.md** → Parent tracking for nested structures
+4. Read: **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** → Parent tracking for nested structures
 5. Reference: **OWNERSHIP_MODELS_GUIDE.md** → Decision tree and summary table
 
 **Time:** ~50 minutes  
@@ -213,7 +213,7 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ---
 
-### 6. **OPTION_B_IMPLEMENTATION_GUIDE.md** – ISSUE 26 IMPLEMENTATION
+### 6. **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** – ISSUE 26 IMPLEMENTATION
 **Purpose:** Complete implementation guide for parent tracking and dynamic resolution  
 **Reading Time:** 25-35 minutes  
 **Best For:** Understanding how proxies safely resolve elements after reallocation

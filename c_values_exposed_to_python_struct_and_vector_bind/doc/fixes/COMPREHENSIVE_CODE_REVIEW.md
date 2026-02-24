@@ -1346,7 +1346,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 
 **Related Issues:**
 - Complements Issue 26 (Option B Dynamic Element Resolution) - fixes lifetime management gap
-- Part of Option B implementation (doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md)
+- Part of Option B implementation (doc/architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md)
 
 ---
 

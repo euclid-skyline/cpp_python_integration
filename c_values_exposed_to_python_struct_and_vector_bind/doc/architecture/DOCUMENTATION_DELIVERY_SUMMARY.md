@@ -422,9 +422,9 @@ You will understand:
 
 ### For Understanding Issue 26 (Vector Element Proxy Safety)
 1. **Start:** VECTOR_ELEMENT_PROXY_INVALIDATION.md (problem analysis)
-2. **Learn:** OPTION_B_IMPLEMENTATION_GUIDE.md (solution)
+2. **Learn:** PARENT_TRACKING_IMPLEMENTATION_GUIDE.md (solution)
 3. **Deep Dive:** CIRCULAR_DEPENDENCY_RESOLUTION.md (header patterns)
-4. **Implement:** Follow code changes in OPTION_B_IMPLEMENTATION_GUIDE.md
+4. **Implement:** Follow code changes in PARENT_TRACKING_IMPLEMENTATION_GUIDE.md
 
 ### For Header Architecture Patterns
 1. **Read:** CIRCULAR_DEPENDENCY_RESOLUTION.md (comprehensive pattern guide)

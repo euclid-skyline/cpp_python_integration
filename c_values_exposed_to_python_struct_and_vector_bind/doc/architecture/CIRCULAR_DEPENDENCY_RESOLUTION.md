@@ -286,6 +286,6 @@ If you add new methods to `BoundStruct` or `BoundVector` that call each other:
 
 ## References
 
-- **Implementation Details:** See `OPTION_B_IMPLEMENTATION_GUIDE.md`
+- **Implementation Details:** See `PARENT_TRACKING_IMPLEMENTATION_GUIDE.md`
 - **Problem Context:** See `VECTOR_ELEMENT_PROXY_INVALIDATION.md`
 - **Code Review:** See `CODE_REVIEW.md` Issue 26

@@ -112,7 +112,7 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 
 ---
 
-**Document 7: OPTION_B_IMPLEMENTATION_GUIDE.md** – The "Solution" Document
+**Document 7: PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** – The "Solution" Document
 - ✅ Complete architecture for parent tracking (index + parent instead of raw pointer)
 - ✅ Updated BoundStruct and BoundVector with parent constructors
 - ✅ Lazy resolution in instance() and raw_vector() methods

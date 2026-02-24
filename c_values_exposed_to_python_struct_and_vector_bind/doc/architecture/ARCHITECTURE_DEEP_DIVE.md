@@ -1069,7 +1069,7 @@ void *BoundStruct::get_field_ptr(const FieldInfo *field) {
 
 **See:** 
 - [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md) - Problem analysis
-- [OPTION_B_IMPLEMENTATION_GUIDE.md](OPTION_B_IMPLEMENTATION_GUIDE.md) - Implementation details
+- [PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](PARENT_TRACKING_IMPLEMENTATION_GUIDE.md) - Implementation details
 
 ---
 
@@ -1470,6 +1470,6 @@ for t in threads: t.start()
 **For Complete Documentation:**
 - [WRAPPER_OWNERSHIP_PATTERN.md](WRAPPER_OWNERSHIP_PATTERN.md) - Ownership model (Issue #18)
 - [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md) - Proxy invalidation analysis (Issue #26)
-- [OPTION_B_IMPLEMENTATION_GUIDE.md](OPTION_B_IMPLEMENTATION_GUIDE.md) - Parent tracking implementation (Issue #26)
+- [PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](PARENT_TRACKING_IMPLEMENTATION_GUIDE.md) - Parent tracking implementation (Issue #26)
 - [CIRCULAR_DEPENDENCY_RESOLUTION.md](CIRCULAR_DEPENDENCY_RESOLUTION.md) - Header architecture
 - [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) - Complete ownership and thread safety reference (Issues #34, #39, #48)

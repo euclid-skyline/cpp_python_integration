@@ -1,8 +1,50 @@
-# Option B Implementation: Dynamic Element Resolution
+# Parent Tracking Implementation Guide: Dynamic Element Resolution for Vector Safety
 
-## Overview
+## Purpose
 
-Replace raw element pointers with **index + parent vector**, resolving the pointer on each access.
+This document provides the complete implementation guide for **parent tracking** - the solution that prevents use-after-free errors when vector element proxies outlive vector reallocations.
+
+## Problem Being Solved
+
+**Issue #26: Vector Element Proxy Invalidation**
+
+When Python code accesses a vector element (e.g., `cpp.enemies[0]`), a `StructProxy` is created that holds a raw pointer to that element. If the vector reallocates due to growth (e.g., calling `append_new()`), all raw pointers to elements become dangling - pointing to freed memory.
+
+**Example of the Problem:**
+```python
+enemy = cpp.enemies[0]        # StructProxy holds pointer to enemies[0]
+cpp.enemies.append_new()      # Vector reallocates, old memory freed
+print(enemy.health)           # ❌ CRASH: pointer now points to freed memory
+```
+
+## Solution: Parent Tracking with Dynamic Resolution
+
+Instead of storing raw pointers to vector elements, store:
+- **Parent reference:** Pointer to the parent `BoundVector`
+- **Element index:** Position in the vector
+
+On each field access, dynamically resolve the current memory location by calling `parent_vector->element_ptr(index)`. This ensures the pointer is always valid, even after reallocation.
+
+**Example with Solution:**
+```python
+enemy = cpp.enemies[0]        # StructProxy stores parent + index (not raw pointer)
+cpp.enemies.append_new()      # Vector reallocates
+print(enemy.health)           # ✓ SAFE: Resolves fresh pointer on access
+```
+
+## Implementation Overview
+
+This guide covers 6 architectural changes:
+1. Update `BoundStruct` to support parent tracking
+2. Update `BoundVector` similarly for nested vectors
+3. Modify proxy creation in `VectorProxy_getitem()`
+4. Update `append_new()` for nested struct vectors
+5. Add parent-aware constructors
+6. Handle circular dependencies in headers
+
+**See Also:**
+- [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md) - Problem analysis
+- [CIRCULAR_DEPENDENCY_RESOLUTION.md](CIRCULAR_DEPENDENCY_RESOLUTION.md) - Header architecture
 
 ---
 

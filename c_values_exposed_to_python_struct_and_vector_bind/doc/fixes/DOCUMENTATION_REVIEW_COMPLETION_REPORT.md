@@ -25,7 +25,7 @@ This folder contains 18 comprehensive documents organized by topic:
 - **OWNERSHIP_MODELS_GUIDE.md** - Complete authoritative ownership reference (Issue 44)
 - **SCALAR_VS_COMPLEX_OWNERSHIP.md** - Ownership model comparisons across types
 - **WRAPPER_OWNERSHIP_PATTERN.md** - Proxy ownership semantics (Issue 18)
-- **OPTION_B_IMPLEMENTATION_GUIDE.md** - Parent tracking for vector safety (Issue 26)
+- **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** - Parent tracking for vector safety (Issue 26)
 
 ### Issue-Specific Solutions (2 documents)
 - **VECTOR_ELEMENT_PROXY_INVALIDATION.md** - Issue 26 problem analysis
@@ -123,17 +123,17 @@ This folder contains 18 comprehensive documents organized by topic:
 - [doc/fixes/CODE_REVIEW.md](doc/fixes/CODE_REVIEW.md)
 - [doc/fixes/COMPREHENSIVE_CODE_REVIEW.md](doc/fixes/COMPREHENSIVE_CODE_REVIEW.md)
 - [doc/architecture/OWNERSHIP_MODELS_GUIDE.md](doc/architecture/OWNERSHIP_MODELS_GUIDE.md)
-- [doc/architecture/WRAPPER_OWNERSHIP_PATTERN.md](doc/architecture/WRAPPER_OWNERSHIP_PATTERN.md)
-- [doc/architecture/SCALAR_VS_COMPLEX_OWNERSHIP.md](doc/architecture/SCALAR_VS_COMPLEX_OWNERSHIP.md)
-- [doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md](doc/architecture/OPTION_B_IMPLEMENTATION_GUIDE.md)
-- [doc/architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md](doc/architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md)
-- [doc/architecture/USAGE_GUIDE.md](doc/architecture/USAGE_GUIDE.md)
-- [doc/architecture/DOCUMENTATION_INDEX.md](doc/architecture/DOCUMENTATION_INDEX.md)
-- [doc/architecture/README_DOCUMENTATION_SET.md](doc/architecture/README_DOCUMENTATION_SET.md)
-- [doc/architecture/ISSUES_RESOLUTION_SUMMARY.md](doc/architecture/ISSUES_RESOLUTION_SUMMARY.md)
-- [doc/architecture/DOCUMENTATION_REVIEW_COMPLETION_REPORT.md](doc/architecture/DOCUMENTATION_REVIEW_COMPLETION_REPORT.md)
-- [doc/fixes/CRITICAL_FIXES_APPLIED.md](doc/fixes/CRITICAL_FIXES_APPLIED.md)
-- [doc/fixes/CODE_QUALITY_FIXES.md](doc/fixes/CODE_QUALITY_FIXES.md)
+- [../architecture/WRAPPER_OWNERSHIP_PATTERN.md](../architecture/WRAPPER_OWNERSHIP_PATTERN.md)
+- [../architecture/SCALAR_VS_COMPLEX_OWNERSHIP.md](../architecture/SCALAR_VS_COMPLEX_OWNERSHIP.md)
+- [../architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](../architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md)
+- [../architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md](../architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md)
+- [../architecture/USAGE_GUIDE.md](../architecture/USAGE_GUIDE.md)
+- [../architecture/DOCUMENTATION_INDEX.md](../architecture/DOCUMENTATION_INDEX.md)
+- [../architecture/README_DOCUMENTATION_SET.md](../architecture/README_DOCUMENTATION_SET.md)
+- [ISSUES_RESOLUTION_SUMMARY.md](ISSUES_RESOLUTION_SUMMARY.md)
+- [DOCUMENTATION_REVIEW_COMPLETION_REPORT.md](DOCUMENTATION_REVIEW_COMPLETION_REPORT.md)
+- [CRITICAL_FIXES_APPLIED.md](CRITICAL_FIXES_APPLIED.md)
+- [CODE_QUALITY_FIXES.md](CODE_QUALITY_FIXES.md)
 - [doc/fixes/INCLUDE_DEPENDENCY_ANALYSIS.md](doc/fixes/INCLUDE_DEPENDENCY_ANALYSIS.md)
 - [doc/fixes/TESTING_IMPROVEMENTS.md](doc/fixes/TESTING_IMPROVEMENTS.md)
 
@@ -155,7 +155,7 @@ This folder contains 18 comprehensive documents organized by topic:
 |-------|-------------------|
 | Ownership models | OWNERSHIP_MODELS_GUIDE.md |
 | Proxy ownership patterns | WRAPPER_OWNERSHIP_PATTERN.md |
-| Vector element lifetime | OPTION_B_IMPLEMENTATION_GUIDE.md |
+| Vector element lifetime | PARENT_TRACKING_IMPLEMENTATION_GUIDE.md |
 | API usage and limitations | USAGE_GUIDE.md |
 | Issue tracking (1-28) | CODE_REVIEW.md |
 | Issue tracking (29-49) | COMPREHENSIVE_CODE_REVIEW.md |

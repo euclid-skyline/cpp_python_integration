@@ -246,7 +246,7 @@ The system implements two critical safety patterns that eliminate memory corrupt
 
 **See:** 
 - [VECTOR_ELEMENT_PROXY_INVALIDATION.md](../architecture/VECTOR_ELEMENT_PROXY_INVALIDATION.md)
-- [OPTION_B_IMPLEMENTATION_GUIDE.md](../architecture/OPTION_B_IMPLEMENTATION_GUIDE.md)
+- [PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](../architecture/PARENT_TRACKING_IMPLEMENTATION_GUIDE.md)
 
 ---
 
