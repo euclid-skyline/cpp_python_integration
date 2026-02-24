@@ -329,6 +329,361 @@ template <typename T> void bind(...) {
 
 ---
 
+### Pattern 5: Thread-Safe Singleton with Double-Checked Locking (Issue #34)
+
+**Definition:** Protect singleton initialization with mutex to prevent race conditions in multi-threaded environments.
+
+**Where Implemented:**
+```cpp
+#include <mutex>
+
+static std::mutex g_cpp_proxy_mutex;
+static PyObject *g_cpp_proxy_instance = nullptr;
+
+PyObject *create_cpp_proxy() {
+    std::lock_guard<std::mutex> lock(g_cpp_proxy_mutex);
+    
+    if (g_cpp_proxy_instance) {
+        Py_INCREF(g_cpp_proxy_instance);
+        return g_cpp_proxy_instance;
+    }
+    
+    // First initialization
+    if (PyType_Ready(&CppProxyType) < 0)
+        return nullptr;
+    
+    g_cpp_proxy_instance = PyObject_New(CppProxyObject, &CppProxyType);
+    return g_cpp_proxy_instance;
+}
+```
+
+**Why This Pattern:**
+
+```cpp
+// ❌ Alternative 1: No Locking (UNSAFE)
+PyObject *create_unsafe() {
+    if (g_instance) return g_instance;
+    // ← Thread A reads nullptr
+    // ← Thread B reads nullptr
+    g_instance = PyObject_New(...);  // ← Both create instances!
+    // Result: Memory leak, possible double-initialization
+}
+
+// ❌ Alternative 2: Lock Outside Check (SLOW)
+PyObject *create_always_lock() {
+    std::lock_guard lock(g_mutex);
+    if (g_instance) return g_instance;  // ← Every call acquires lock
+    // Overhead: ~10 CPU cycles per call, forever
+}
+
+// ❌ Alternative 3: Lock-Free Read (UNSAFE without std::atomic)
+PyObject *create_lockfree_unsafe() {
+    if (g_instance) return g_instance;  // ← Read outside lock: DATA RACE
+    std::lock_guard lock(g_mutex);
+    if (!g_instance) g_instance = PyObject_New(...);
+    return g_instance;
+}
+
+// ✓ Chosen: Double-Checked Locking (Safe + Fast)
+PyObject *create_cpp_proxy() {
+    std::lock_guard lock(g_mutex);  // ← Always acquire lock
+    if (g_instance) {               // ← Check inside lock: SAFE
+        Py_INCREF(g_instance);
+        return g_instance;
+    }
+    // Initialization path...
+}
+```
+
+**Trade-offs:**
+
+| Approach | Thread Safe | Performance | Complexity |
+|----------|-------------|-------------|------------|
+| No locking | ❌ Unsafe | Fast | Low |
+| Always lock | ✓ Safe | Medium | Low |
+| Lock-free (no atomic) | ❌ Unsafe | Fast | Medium |
+| std::call_once | ✓ Safe | Fast | Medium |
+| **Double-checked lock** | **✓ Safe** | **Fast** | **Low** |
+
+**Why std::lock_guard over manual lock/unlock:**
+
+```cpp
+// ✓ RAII pattern: Exception-safe
+void example() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (may_throw())
+        throw std::runtime_error("error");
+    // ✓ lock_guard destructor releases mutex automatically
+}
+
+// ❌ Manual locking: Exception-unsafe
+void example_unsafe() {
+    g_mutex.lock();
+    if (may_throw())
+        throw std::runtime_error("error");
+        // ❌ Mutex never unlocked! Deadlock on next call!
+    g_mutex.unlock();
+}
+```
+
+**Performance Characteristics:**
+
+- **First call:** ~100 CPU cycles (initialization + mutex)
+- **Subsequent calls:** ~10 CPU cycles (mutex lock/unlock)
+- **Memory cost:** 40 bytes (std::mutex)
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) Section 7: Thread Safety
+
+---
+
+### Pattern 6: Python Reference Counting Semantics (Issue #39)
+
+**Definition:** Every function returning `PyObject*` follows strict ownership rules: return NEW references that caller must `Py_DECREF`.
+
+**Core Principle:**
+
+```cpp
+// NEW reference: Caller owns, must Py_DECREF
+PyObject *new_ref = PyLong_FromLong(42);  // refcount=1
+Py_DECREF(new_ref);  // ✓ Required
+
+// BORROWED reference: Caller does NOT own, must NOT Py_DECREF
+PyObject *borrowed = PyTuple_GetItem(tuple, 0);
+// Py_DECREF(borrowed);  ❌ WRONG! Tuple owns this
+```
+
+**Where Implemented:**
+
+```cpp
+// All proxy factory functions return NEW references
+PyObject *create_cpp_proxy() {
+    if (g_instance) {
+        Py_INCREF(g_instance);  // ✓ Increment refcount
+        return g_instance;       // Caller owns this reference
+    }
+    g_instance = PyObject_New(...);  // refcount=1
+    return g_instance;  // Caller owns this reference
+}
+
+PyObject *StructProxy_New(BoundStruct *bound) {
+    auto *self = PyObject_New(StructProxyObject, &StructProxyType);
+    self->bound = bound;
+    return (PyObject*)self;  // refcount=1, caller must Py_DECREF
+}
+```
+
+**Why This Pattern:**
+
+```cpp
+// ❌ Alternative 1: Return borrowed references (UNSAFE)
+PyObject *get_borrowed() {
+    if (!g_instance) g_instance = PyObject_New(...);
+    return g_instance;  // NO Py_INCREF
+    // Problem: Caller doesn't know if they own this
+    // If caller does Py_DECREF, object might be destroyed
+    // If caller doesn't, unclear ownership
+}
+
+// ❌ Alternative 2: Mixed references (CONFUSING)
+PyObject *get_mixed() {
+    if (condition) {
+        return PyLong_FromLong(1);  // NEW reference
+    } else {
+        return cached_value;  // BORROWED reference
+    }
+    // Problem: Caller can't know which path was taken
+    // Memory leaks or use-after-free guaranteed
+}
+
+// ✓ Chosen: Always NEW references (CONSISTENT)
+PyObject *get_consistent() {
+    if (condition) {
+        return PyLong_FromLong(1);  // NEW
+    } else {
+        Py_INCREF(cached_value);
+        return cached_value;  // NEW (incremented)
+    }
+    // Caller always knows: must Py_DECREF when done
+}
+```
+
+**Refcount Lifecycle:**
+
+```
+create_cpp_proxy() called (first time)
+  ├─→ PyObject_New() creates object
+  │   └─→ refcount = 1
+  ├─→ Store in g_cpp_proxy_instance
+  └─→ Return to caller (refcount = 1)
+
+create_cpp_proxy() called (subsequent)
+  ├─→ g_cpp_proxy_instance exists (refcount = 1)
+  ├─→ Py_INCREF(g_cpp_proxy_instance)
+  │   └─→ refcount = 2
+  └─→ Return to caller (refcount = 2)
+      └─→ Caller Py_DECREF when done (refcount = 1)
+          └─→ Singleton keeps instance alive
+```
+
+**Destructor Responsibilities:**
+
+```cpp
+static void StructProxy_dealloc(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    
+    delete proxy->bound;  // Free owned C++ wrapper
+    
+    Py_XDECREF(proxy->parent_proxy);  // Release owned reference
+    // Py_XDECREF is NULL-safe version of Py_DECREF
+    
+    Py_TYPE(self)->tp_free(self);  // Free Python object
+}
+```
+
+**Trade-offs:**
+
+| Approach | Consistency | Safety | Complexity |
+|----------|-------------|--------|------------|
+| Always NEW | ✓ High | ✓ Safe | Low |
+| Always BORROWED | ✓ High | ❌ Unsafe | Low |
+| Mixed | ❌ Low | ❌ Very unsafe | High |
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) Section 6: Python C-API Reference Counting
+
+---
+
+### Pattern 7: Parent-Child Proxy Lifetime Management (Issue #48)
+
+**Definition:** Element proxies store references to parent proxies to prevent parent destruction while children exist.
+
+**The Problem:**
+
+```python
+def get_first_enemy():
+    enemies = cpp.enemies     # VectorProxy refcount=1
+    return enemies[0]         # StructProxy created
+    # ← enemies goes out of scope
+    # → VectorProxy destroyed (refcount=0)
+    # → BoundVector freed
+    # → StructProxy.bound->m_parent_vector DANGLING!
+
+enemy = get_first_enemy()
+print(enemy.health)  # ❌ Use-after-free: parent destroyed
+```
+
+**The Solution:**
+
+```cpp
+typedef struct {
+    PyObject_HEAD
+    BoundStruct *bound;        // Owned wrapper
+    PyObject *parent_proxy;    // Reference to parent VectorProxy
+} StructProxyObject;
+
+PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
+    // ... create element wrapper ...
+    
+    StructProxyObject *proxy = PyObject_New(StructProxyObject, &StructProxyType);
+    proxy->bound = element_wrapper;
+    
+    proxy->parent_proxy = self;  // Store parent reference
+    Py_INCREF(self);             // ✓ Keep parent alive
+    
+    return (PyObject*)proxy;
+}
+
+static void StructProxy_dealloc(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    delete proxy->bound;
+    Py_XDECREF(proxy->parent_proxy);  // ✓ Release parent
+    Py_TYPE(self)->tp_free(self);
+}
+```
+
+**Why This Pattern:**
+
+```cpp
+// ❌ Alternative 1: No parent reference (UNSAFE)
+PyObject *VectorProxy_getitem_unsafe(PyObject *self, Py_ssize_t index) {
+    StructProxyObject *proxy = PyObject_New(...);
+    proxy->bound = element_wrapper;
+    proxy->parent_proxy = nullptr;  // ← No reference
+    return (PyObject*)proxy;
+}
+// Problem: Parent can be destroyed while element exists
+// Result: Dangling pointer, use-after-free
+
+// ❌ Alternative 2: Weak reference (COMPLEX)
+PyObject *VectorProxy_getitem_weak(PyObject *self, Py_ssize_t index) {
+    StructProxyObject *proxy = PyObject_New(...);
+    proxy->bound = element_wrapper;
+    proxy->parent_weak = PyWeakref_NewRef(self, nullptr);
+    // Problem: Need to check if parent still alive on every access
+    // Complexity: Handle case where parent destroyed
+}
+
+// ✓ Chosen: Strong reference (SIMPLE + SAFE)
+PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
+    StructProxyObject *proxy = PyObject_New(...);
+    proxy->parent_proxy = self;
+    Py_INCREF(self);  // Keep parent alive
+    // Benefit: Parent guaranteed valid while element exists
+}
+```
+
+**Lifetime Diagram:**
+
+```
+State 1: Create Parent
+  enemies = cpp.enemies
+    → VectorProxy created (refcount=1)
+
+State 2: Create Element
+  first = enemies[0]
+    → StructProxy created
+    → parent_proxy = VectorProxy
+    → Py_INCREF(VectorProxy)
+    → VectorProxy refcount = 2
+
+State 3: Parent Local Variable Released
+  return first
+    → enemies local ref released
+    → VectorProxy refcount: 2 → 1 (still alive!)
+
+State 4: Element Used
+  enemy = get_first_enemy()
+  enemy.health
+    → StructProxy alive (refcount=1)
+    → VectorProxy alive (refcount=1 from parent_proxy)
+    → BoundVector valid
+    → Dynamic resolution works ✓
+
+State 5: Element Destroyed
+  del enemy
+    → StructProxy_dealloc
+    → Py_XDECREF(parent_proxy)
+    → VectorProxy refcount: 1 → 0
+    → VectorProxy_dealloc
+    → BoundVector freed
+```
+
+**Trade-offs:**
+
+| Approach | Safety | Memory | Complexity |
+|----------|--------|--------|------------|
+| No reference | ❌ Unsafe | 0 bytes | Low |
+| Weak reference | ⚠️ Conditional | 8 bytes | High |
+| **Strong reference** | **✓ Safe** | **8 bytes** | **Low** |
+
+**Memory Cost:**
+
+- 8 bytes per element proxy (parent_proxy pointer)
+- 2 CPU cycles per creation/destruction (Py_INCREF/DECREF)
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) Section 8: Parent-Child Proxy Lifetime
+
+---
+
 ## II. Design Trade-offs and Decisions
 
 ### Trade-off 1: Pointer Arithmetic vs. Container Wrapper

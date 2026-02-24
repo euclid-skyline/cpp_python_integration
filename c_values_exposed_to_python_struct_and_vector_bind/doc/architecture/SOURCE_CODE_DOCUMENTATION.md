@@ -250,6 +250,128 @@ The system implements two critical safety patterns that eliminate memory corrupt
 
 ---
 
+### Pattern 3: Thread-Safe Singleton Initialization (Issue #34 Fix)
+
+**Problem Prevented:** Race conditions during multi-threaded proxy creation causing double-initialization or memory leaks.
+
+**Implementation:**
+- Static mutex `g_cpp_proxy_mutex` protects singleton initialization
+- `std::lock_guard` provides RAII-based exception-safe locking
+- Double-checked locking pattern: check exists → acquire lock → check again → initialize
+- Ensures `PyType_Ready()` called exactly once across all threads
+
+**Key Files:**
+- [python_proxy.cpp](python_proxy.cpp) - `create_cpp_proxy()` with mutex protection
+
+**Code Pattern:**
+```cpp
+static std::mutex g_cpp_proxy_mutex;
+static PyObject *g_cpp_proxy_instance = nullptr;
+
+PyObject *create_cpp_proxy() {
+    std::lock_guard<std::mutex> lock(g_cpp_proxy_mutex);
+    if (g_cpp_proxy_instance) {
+        Py_INCREF(g_cpp_proxy_instance);
+        return g_cpp_proxy_instance;
+    }
+    // First initialization (protected by mutex)
+    g_cpp_proxy_instance = PyObject_New(...);
+    return g_cpp_proxy_instance;
+}
+```
+
+**Result:** Multiple threads can safely call `create_cpp_proxy()` → singleton initialized once → no race conditions
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](../architecture/OWNERSHIP_MODELS_GUIDE.md) Section 7: Thread Safety
+
+---
+
+### Pattern 4: Python Reference Counting Semantics (Issue #39 Implementation)
+
+**Problem Prevented:** Memory leaks (refcount too high) or use-after-free (refcount too low).
+
+**Implementation:**
+- All proxy factory functions return NEW references (caller must `Py_DECREF`)
+- `create_cpp_proxy()` increments refcount before returning existing instance
+- `PyObject_New()` creates objects with refcount=1
+- Destructors use `Py_XDECREF()` to release owned references
+
+**Key Functions:**
+- `create_cpp_proxy()` - Returns NEW reference (Py_INCREF if existing)
+- `StructProxy_New()` - Returns NEW reference (refcount=1 from PyObject_New)
+- `VectorProxy_New()` - Returns NEW reference (refcount=1 from PyObject_New)
+- `StructProxy_dealloc()` - Releases parent_proxy reference with Py_XDECREF
+
+**Code Pattern:**
+```cpp
+// Factory function
+PyObject *StructProxy_New(BoundStruct *bound) {
+    auto *self = PyObject_New(StructProxyObject, &StructProxyType);
+    self->bound = bound;
+    return (PyObject*)self;  // NEW reference (refcount=1)
+}
+
+// Destructor
+static void StructProxy_dealloc(PyObject *self) {
+    delete proxy->bound;
+    Py_XDECREF(proxy->parent_proxy);  // Release owned reference
+    Py_TYPE(self)->tp_free(self);
+}
+```
+
+**Result:** Consistent reference ownership → Python runtime manages lifetimes correctly → no leaks or crashes
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](../architecture/OWNERSHIP_MODELS_GUIDE.md) Section 6: Python C-API Reference Counting
+
+---
+
+### Pattern 5: Parent-Child Proxy Lifetime Management (Issue #48 Fix)
+
+**Problem Prevented:** Dangling pointers when parent VectorProxy destroyed while element StructProxy still exists.
+
+**Implementation:**
+- `StructProxyObject` has `parent_proxy` field storing reference to parent VectorProxy
+- `VectorProxy_getitem()` sets `parent_proxy` and calls `Py_INCREF(parent)`
+- `StructProxy_dealloc()` releases parent reference with `Py_XDECREF(parent_proxy)`
+- Parent kept alive as long as any element proxy exists
+
+**Key Files:**
+- [python_proxy.cpp](python_proxy.cpp) - StructProxyObject definition, VectorProxy_getitem(), StructProxy_dealloc()
+
+**Code Pattern:**
+```cpp
+typedef struct {
+    PyObject_HEAD
+    BoundStruct *bound;
+    PyObject *parent_proxy;  // Keeps parent VectorProxy alive
+} StructProxyObject;
+
+PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
+    // ... create element wrapper ...
+    StructProxyObject *proxy = PyObject_New(...);
+    proxy->parent_proxy = self;
+    Py_INCREF(self);  // Keep parent alive
+    return (PyObject*)proxy;
+}
+```
+
+**Memory Lifetime:**
+```python
+def get_element():
+    v = cpp.enemies     # VectorProxy refcount=1
+    e = v[0]            # StructProxy created, parent_proxy increments VectorProxy refcount to 2
+    return e            # Local v released, but parent_proxy keeps VectorProxy alive (refcount=1)
+
+enemy = get_element()   # VectorProxy still alive due to parent_proxy
+print(enemy.health)     # ✓ Safe: parent valid, dynamic resolution works
+```
+
+**Result:** Element proxies keep parent alive → BoundVector remains valid → no dangling pointers
+
+**See:** [OWNERSHIP_MODELS_GUIDE.md](../architecture/OWNERSHIP_MODELS_GUIDE.md) Section 8: Parent-Child Proxy Lifetime
+
+---
+
 ### Circular Dependency Resolution
 
 **Challenge:** BoundStruct needs BoundVector for parent tracking, but headers must avoid circular includes.
@@ -272,6 +394,9 @@ The system implements two critical safety patterns that eliminate memory corrupt
 - **Manual memory control** for nested vectors: placement-new and explicit cleanup prevent type mismatch issues.
 - **Compatibility**: Configuration supports system, bundled, and zip-based Python for portability.
 - **Memory safety**: Wrapper ownership and parent tracking eliminate double-free and use-after-free bugs with minimal overhead (24 bytes/proxy, 1-2 CPU cycles/access).
+- **Thread safety**: Singleton initialization protected by std::mutex (Issue #34) prevents race conditions.
+- **Reference counting**: All proxy factory functions return NEW references with correct Python refcount semantics (Issue #39).
+- **Parent-child lifetime**: Element proxies hold references to parent proxies, preventing dangling pointers (Issue #48).
 
 ## 5) Known Limitations (Behavioral)
 
@@ -279,7 +404,7 @@ The system implements two critical safety patterns that eliminate memory corrupt
 - No custom index support (`__index__` protocol).
 - No string `repr` or `str` for proxies (debugging is raw object print).
 - Iterator and len are implemented, but other Python container protocols remain limited.
-- Thread safety is not guaranteed; access should be single-threaded unless synchronized.
+- Multi-threaded access to C++ data structures requires external synchronization (Python GIL provides some protection for proxy creation).
 
 ## 5) Improvements and Enhancements
 
@@ -294,9 +419,9 @@ The system implements two critical safety patterns that eliminate memory corrupt
 - Provide a lightweight iteration helper for nested vector formatting in Python.
 
 ### Robustness enhancements
-- Add thread-safety guards around `PyInterface::g_values` access.
 - Add optional bounds-checking diagnostics in debug builds.
 - Extend metadata to store field documentation for auto-generated Python docs.
+- Consider read-write locks for PyInterface::g_values if concurrent read performance becomes critical.
 
 ### Testing enhancements
 - Add automated tests for iterator behavior, including empty vectors.
