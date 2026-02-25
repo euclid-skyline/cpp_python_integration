@@ -886,7 +886,9 @@ static VectorInfo ItemVectorInfo = {
     &ItemInfo,
     item_vec_size,
     item_vec_element_ptr,
-    item_vec_append
+    item_vec_append,
+    item_vec_create_empty,
+    item_vec_destroy
 };
 
 template <>
@@ -943,7 +945,9 @@ static VectorInfo VectorOfIntVectorInfo = {
     &IntVectorInfo,
     grid_vec_size,
     grid_vec_element_ptr,
-    grid_vec_append
+    grid_vec_append,
+    grid_vec_create_empty,
+    grid_vec_destroy
 };
 
 template <>
@@ -1010,7 +1014,9 @@ static VectorInfo VectorOfEnemyVectorInfo = {
     &EnemyVectorInfo,
     enemy_waves_vec_size,
     enemy_waves_vec_element_ptr,
-    enemy_waves_vec_append
+    enemy_waves_vec_append,
+    enemy_waves_vec_create_empty,
+    enemy_waves_vec_destroy
 };
 
 template <>

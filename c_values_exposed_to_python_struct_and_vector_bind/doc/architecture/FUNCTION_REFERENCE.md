@@ -245,6 +245,10 @@ Step 1: Register all proxy type objects
         ├─→ PyType_Ready(&StructProxyType)
         ├─→ PyType_Ready(&VectorProxyType)
         └─→ PyType_Ready(&VectorIteratorType)
+        │
+        └─→ Note: VectorInfo function pointers (size_fn, element_ptr_fn,
+            append_fn, create_empty_vec_fn, destroy_vec_fn) enable
+            type-specific vector operations without knowing element type
 
 Step 2: Create module
         ├─→ PyModule_Create(&cppmodule)

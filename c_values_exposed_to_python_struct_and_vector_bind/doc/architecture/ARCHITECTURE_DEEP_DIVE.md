@@ -266,6 +266,8 @@ struct VectorInfo {
     std::size_t (*size_fn)(void *vec_ptr);               // Get size
     void *(*element_ptr_fn)(void *vec_ptr, std::size_t); // Get element address
     bool (*append_fn)(void *vec_ptr, void *value_ptr);   // Append element
+    void *(*create_empty_vec_fn)();                       // Create empty vector (for append_new)
+    void (*destroy_vec_fn)(void *vec_ptr);               // Destroy vector (cleanup)
 };
 
 class BoundVector : public BoundValue {
@@ -282,7 +284,17 @@ class BoundVector : public BoundValue {
 };
 ```
 
-**Function Pointers: Why This Pattern?**
+**Function Pointers Explained:**
+
+| Function | Purpose | Example |
+|----------|---------|----------|
+| `size_fn` | Get vector size | `vec_int_size(ptr)` → `vector.size()` |
+| `element_ptr_fn` | Get element address | `vec_int_element_ptr(ptr, 0)` → `&vector[0]` |
+| `append_fn` | Append element | `vec_int_append(ptr, value)` → `vector.push_back(value)` |
+| `create_empty_vec_fn` | Create new empty vector | `vec_int_create_empty()` → `new std::vector<int>()` |
+| `destroy_vec_fn` | Destroy vector | `vec_int_destroy(ptr)` → `delete (std::vector<int>*)ptr` |
+
+**Function Pointers: Why This Pattern?****
 
 ```cpp
 // For std::vector<int>:

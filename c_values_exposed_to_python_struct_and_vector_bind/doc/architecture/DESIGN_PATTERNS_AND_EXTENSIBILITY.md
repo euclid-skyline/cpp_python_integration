@@ -116,9 +116,14 @@ class BoundValue {
 **Where Used:**
 ```cpp
 struct VectorInfo {
-    std::size_t (*size_fn)(void *vec_ptr);
-    void *(*element_ptr_fn)(void *vec_ptr, std::size_t index);
-    bool (*append_fn)(void *vec_ptr, void *value_ptr);
+    ValueType element_type;                              // What elements does this vector hold?
+    void *element_meta;                                  // StructInfo* or VectorInfo* if compound
+    
+    std::size_t (*size_fn)(void *vec_ptr);              // Get size
+    void *(*element_ptr_fn)(void *vec_ptr, std::size_t index); // Get element address
+    bool (*append_fn)(void *vec_ptr, void *value_ptr);   // Append element
+    void *(*create_empty_vec_fn)();                      // Create empty vector
+    void (*destroy_vec_fn)(void *vec_ptr);               // Destroy vector
 };
 ```
 
@@ -140,6 +145,14 @@ VectorInfo scores_info{
         auto *v = static_cast<std::vector<int>*>(ptr);
         v->push_back(*(int*)value);
         return true;
+    },
+    // create_empty_vec_fn: Create new int vector
+    []() {
+        return new std::vector<int>();
+    },
+    // destroy_vec_fn: Clean up allocated vector
+    [](void *ptr) {
+        delete static_cast<std::vector<int>*>(ptr);
     }
 };
 
@@ -159,6 +172,14 @@ VectorInfo enemies_info{
         auto *v = static_cast<std::vector<Player>*>(ptr);
         v->push_back(*(Player*)value);
         return true;
+    },
+    // create_empty_vec_fn: Create new Player vector
+    []() {
+        return new std::vector<Player>();
+    },
+    // destroy_vec_fn: Clean up allocated vector
+    [](void *ptr) {
+        delete static_cast<std::vector<Player>*>(ptr);
     }
 };
 ```
@@ -980,6 +1001,12 @@ inline const VectorInfo *get_vector_info<Weapon>() {
         [](void *ptr, void *val) {
             static_cast<std::vector<Weapon>*>(ptr)->push_back(*(Weapon*)val);
             return true;
+        },
+        []() {
+            return new std::vector<Weapon>();
+        },
+        [](void *ptr) {
+            delete static_cast<std::vector<Weapon>*>(ptr);
         }
     };
     return &info;
