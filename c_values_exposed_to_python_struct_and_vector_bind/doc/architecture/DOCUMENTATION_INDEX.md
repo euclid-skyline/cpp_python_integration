@@ -12,6 +12,7 @@
   - [Path 6: "I want to optimize performance"](#path-6-i-want-to-optimize-performance)
 - [🔍 Quick Reference: What to Read for Common Questions](#-quick-reference-what-to-read-for-common-questions)
 - [📚 Documentation Files](#-documentation-files)
+   - [0. **INTRODUCTORY_CONCEPTS.md** – START HERE FOR CONCEPTS](#0-introductory_conceptsmd--start-here-for-concepts)
   - [1. **ARCHITECTURE_DEEP_DIVE.md** – START HERE](#1-architecture_deep_divemd--start-here)
   - [2. **FUNCTION_REFERENCE.md** – DETAILED IMPLEMENTATION](#2-function_referencemd--detailed-implementation)
   - [3. **DESIGN_PATTERNS_AND_EXTENSIBILITY.md** – PATTERNS & EXTENSION](#3-design_patterns_and_extensibilitymd--patterns--extension)
@@ -41,9 +42,10 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 ## 🎯 Reading Paths Based on Your Goals
 
 ### Path 1: "I want to understand the architecture"
-1. Read: **ARCHITECTURE_DEEP_DIVE.md** → Sections I-III
-2. Skim: **SOURCE_CODE_DOCUMENTATION.md** → File listings
-3. Understand: Why three layers? How does reflection enable multi-language support?
+1. Read: **INTRODUCTORY_CONCEPTS.md** → Templates, Type Traits, Constexpr, Python C API basics
+2. Read: **ARCHITECTURE_DEEP_DIVE.md** → Sections I-III
+3. Skim: **SOURCE_CODE_DOCUMENTATION.md** → File listings
+4. Understand: Why three layers? How does reflection enable multi-language support?
 
 **Time:** ~20 minutes  
 **Outcome:** High-level mental model of the system
@@ -147,6 +149,21 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 
 ## 📚 Documentation Files
+
+### 0. **INTRODUCTORY_CONCEPTS.md** – START HERE FOR CONCEPTS
+**Purpose:** Beginner-friendly explanation of foundational terms and patterns  
+**Reading Time:** 35-45 minutes  
+**Best For:** First-time readers, or quick refresh on templates, type traits, Python C API
+
+**Covers:**
+- C++ templates and how they relate to type traits
+- Type traits and compile-time dispatch
+- Constexpr and `if constexpr`
+- Creating Python modules in C++
+- Core Python C API structures (`PyObject`, `PyTypeObject`, `PyModuleDef`)
+- Reflection, type erasure, and proxy patterns
+
+---
 
 ### 1. **ARCHITECTURE_DEEP_DIVE.md** – START HERE
 **Purpose:** Comprehensive architectural foundation  

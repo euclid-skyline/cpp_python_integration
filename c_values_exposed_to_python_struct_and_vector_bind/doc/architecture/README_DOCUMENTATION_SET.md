@@ -4,7 +4,7 @@
 
 - [Overview](#overview)
 - [📋 What Has Been Created](#-what-has-been-created)
-  - [Core Architecture Documents (4 documents)](#core-architecture-documents-4-documents)
+  - [Core Architecture Documents (5 documents)](#core-architecture-documents-5-documents)
   - [Issue 18 & 26 Solution Documents (4 documents for ownership and safety)](#issue-18--26-solution-documents-4-documents-for-ownership-and-safety)
   - [Vector Element Proxy Safety Documents (3 documents for Issue 26 detailed analysis)](#vector-element-proxy-safety-documents-3-documents-for-issue-26-detailed-analysis)
   - [Supporting Documentation (3 additional documents)](#supporting-documentation-3-additional-documents)
@@ -58,9 +58,23 @@ This document serves as the quick start guide and entry point for the complete d
 
 ## 📋 What Has Been Created
 
-You now have a comprehensive documentation set (~5,580 lines) explaining the C++/Python integration architecture, design patterns, and Issue 26 (vector element proxy safety) solution from every angle:
+You now have a comprehensive documentation set (~7,000+ lines) explaining the C++/Python integration architecture, design patterns, and Issue 26 (vector element proxy safety) solution from every angle:
 
-### Core Architecture Documents (4 documents)
+### Core Architecture Documents (5 documents)
+
+**Document 0: INTRODUCTORY_CONCEPTS.md** – The "Foundations" Document
+
+- ✅ C++ templates and how they relate to type traits
+- ✅ Type traits with simple examples and compile-time dispatch
+- ✅ Constexpr and if constexpr (why they matter)
+- ✅ Creating Python modules in C++ (what is required and why)
+- ✅ Core Python C API structures (PyObject, PyTypeObject, PyModuleDef)
+- ✅ Reflection and type-erasure patterns (conceptual overview)
+- ✅ Direct scalar access vs proxy access for complex objects
+
+**Best For:** First-time readers, quick concept refresh before deeper docs
+
+---
 
 **Document 1: ARCHITECTURE_DEEP_DIVE.md** – The "Why" Document
 
@@ -258,19 +272,21 @@ You now have a comprehensive documentation set (~5,580 lines) explaining the C++
 ## 🎯 How to Use This Documentation
 
 ### If You Have 15 Minutes
-Read: **ARCHITECTURE_DEEP_DIVE.md** Section I (The Three-Layer Design)  
-Learn: Why layers are separated, how multi-language support works
+Read: **INTRODUCTORY_CONCEPTS.md** → Overview + Type Traits (10 min)  
+Skim: **ARCHITECTURE_DEEP_DIVE.md** Section I (5 min)  
+Learn: Foundations + why the three-layer design exists
 
 ### If You Have 45 Minutes
-Path: ARCHITECTURE_DEEP_DIVE.md (all) + Section II (Pure C++ Reflection)  
-Learn: Complete architecture, reflection layer independence
+Path: **INTRODUCTORY_CONCEPTS.md** (25 min) + **ARCHITECTURE_DEEP_DIVE.md** Section I-II (20 min)  
+Learn: Core concepts + architecture overview and reflection independence
 
 ### If You Have 2-3 Hours
 **Full Learning Path:**
-1. ARCHITECTURE_DEEP_DIVE.md (40 min)
-2. FUNCTION_REFERENCE.md – cpp_module.cpp & StructProxy sections (25 min)
-3. DESIGN_PATTERNS_AND_EXTENSIBILITY.md (30 min)
-4. Quick reference of remaining sections as needed
+1. INTRODUCTORY_CONCEPTS.md (35 min)
+2. ARCHITECTURE_DEEP_DIVE.md (40 min)
+3. FUNCTION_REFERENCE.md – cpp_module.cpp & StructProxy sections (25 min)
+4. DESIGN_PATTERNS_AND_EXTENSIBILITY.md (30 min)
+5. Quick reference of remaining sections as needed
 
 Learn: Complete system understanding, implementation details, extension patterns
 
@@ -342,6 +358,14 @@ Total: ~20 lines, zero risk.
 ## 📊 Documentation Coverage Map
 
 ```
+INTRODUCTORY_CONCEPTS.md
+├─ Templates and type traits (foundation)
+├─ Constexpr and if constexpr
+├─ Python C API basics (modules and types)
+├─ Reflection and type erasure (concept overview)
+├─ Direct scalar access vs proxy access
+└─ Proxy pattern overview
+
 ARCHITECTURE_DEEP_DIVE.md
 ├─ Layer Philosophy (why)
 ├─ Layer 1: Reflection (what it is)
@@ -449,6 +473,7 @@ After reading this documentation, you can:
 | Question | Best Document |
 |----------|-----------------|
 | "Where do I start?" | DOCUMENTATION_INDEX.md Reading Paths |
+| "I need the basics" | INTRODUCTORY_CONCEPTS.md |
 | "Why is it designed this way?" | ARCHITECTURE_DEEP_DIVE.md |
 | "How does X feature work?" | FUNCTION_REFERENCE.md (search for X) |
 | "How do I add a new feature?" | DESIGN_PATTERNS_AND_EXTENSIBILITY.md Section III |
@@ -464,7 +489,7 @@ After reading this documentation, you can:
 
 ## 🎓 Learning Outcomes
 
-After reading all 4 documents, you will understand:
+After reading all 5 core documents, you will understand:
 
 ### Architecture Level (6/6 ✓)
 - ✅ The three-layer design and why it matters
@@ -543,6 +568,7 @@ This is professional, production-quality architecture meeting real-world constra
 2. "Do I understand HOW?" → Read FUNCTION_REFERENCE.md
 3. "Do I understand TRADE-OFFS?" → Read DESIGN_PATTERNS_AND_EXTENSIBILITY.md
 4. "Which doc should I read?" → Read DOCUMENTATION_INDEX.md
+5. "Do I need the basics?" → Read INTRODUCTORY_CONCEPTS.md
 
 **Common scenarios:**
 - "I'm confused" → Start with DOCUMENTATION_INDEX.md Reading Paths
@@ -582,8 +608,8 @@ This is professional, production-quality architecture meeting real-world constra
 
 ## 📊 Documentation Statistics
 
-- **Total Lines:** ~5,580
-- **Total Documents:** 9 (4 core architecture + 3 Issue 26 solution + 2 supporting)
+- **Total Lines:** ~7,000+
+- **Total Documents:** 17 (5 core architecture + 12 supporting/issue/reference)
 - **Total Topics:** ~140
 - **Code Examples:** 150+
 - **Data Flow Diagrams:** 20+
