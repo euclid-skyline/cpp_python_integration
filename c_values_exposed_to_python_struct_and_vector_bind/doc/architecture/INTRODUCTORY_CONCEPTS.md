@@ -3,18 +3,19 @@
 
 ## Table of Contents
 
-1. [Compile-Time vs Runtime Programming](#compile-time-vs-runtime-programming)
-2. [Constexpr and if constexpr](#constexpr-and-if-constexpr)
-3. [Type Traits](#type-traits)
-4. [Creating Python Modules in C++](#creating-python-modules-in-c)
-5. [Core Structures for Python Modules](#core-structures-for-python-modules)
-6. [Module Registration and Loading](#module-registration-and-loading)
-7. [Reflection Pattern](#reflection-pattern)
-8. [C++ Type Casting and void* Conversion](#c-type-casting-and-void-conversion)
-9. [Type Erasure Pattern](#type-erasure-pattern)
-10. [Direct (Non-Proxy) Access for Scalars](#direct-non-proxy-access-for-scalars)
-11. [Python Proxy Pattern](#python-proxy-pattern)
-12. [Further Reading](#further-reading)
+- [Overview](#overview)
+- [Compile-Time vs Runtime Programming](#compile-time-vs-runtime-programming)
+- [Constexpr and if constexpr](#constexpr-and-if-constexpr)
+- [Type Traits](#type-traits)
+- [Creating Python Modules in C++](#creating-python-modules-in-c)
+- [Core Structures for Python Modules](#core-structures-for-python-modules)
+- [Module Registration and Loading](#module-registration-and-loading)
+- [Reflection Pattern](#reflection-pattern)
+- [C++ Type Casting and void* Conversion](#c-type-casting-and-void-conversion)
+- [Type Erasure Pattern](#type-erasure-pattern)
+- [Direct (Non-Proxy) Access for Scalars](#direct-non-proxy-access-for-scalars)
+- [Python Proxy Pattern](#python-proxy-pattern)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -371,6 +372,8 @@ void process(T* data) {
 - "Effective Modern C++" by Scott Meyers (Item 15: Use constexpr whenever possible)
 - C++20 consteval and constinit: https://en.cppreference.com/w/cpp/language/consteval
 
+[Back to Table of Contents](#table-of-contents)
+
 ---
 
 ## Constexpr and if constexpr
@@ -505,6 +508,8 @@ constexpr int get_type_size() {
 - cppreference.com — constexpr: https://en.cppreference.com/w/cpp/language/constexpr
 - cppreference.com — if constexpr: https://en.cppreference.com/w/cpp/language/if
 - C++17 Standard proposal P0292: https://open-std.cpp.org/jtc1/sc22/wg21/docs/papers/2016/p0292r2.html
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -760,6 +765,8 @@ register_type<int>("int");          // Calls second branch
 - cppreference.com — Variadic templates: https://en.cppreference.com/w/cpp/language/parameter_pack
 - C++ Standard Library documentation for `std::true_type` and `std::false_type`
 
+[Back to Table of Contents](#table-of-contents)
+
 ---
 
 ## Creating Python Modules in C++
@@ -852,6 +859,8 @@ result = num.double()
 - Python C API — Extending and embedding: https://docs.python.org/3/extending/index.html
 - Python C API — Defining extension modules: https://docs.python.org/3/extending/extending.html
 - Python C API — Module objects: https://docs.python.org/3/c-api/module.html
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -995,6 +1004,8 @@ PyTypeObject *MyType = (PyTypeObject *)PyType_FromSpec(&MyType_spec);
 - Python C API — Object definitions: https://docs.python.org/3/c-api/type_and_members.html
 - PEP 384 — Stable ABI: https://www.python.org/dev/peps/pep-0384/
 
+[Back to Table of Contents](#table-of-contents)
+
 ---
 
 ## Module Registration and Loading
@@ -1108,6 +1119,8 @@ import mymodule  # Returns cached module, no re-initialization
 - setuptools documentation: https://setuptools.pypa.io/en/latest/setup.html
 - Python import system: https://docs.python.org/3/reference/import_system.html
 
+[Back to Table of Contents](#table-of-contents)
+
 ---
 
 ## Reflection Pattern
@@ -1190,6 +1203,8 @@ StructInfo player_info = {
 - C++ std::offset: https://en.cppreference.com/w/cpp/types/offsetof
 - C++ Standard proposals on reflection: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p2996r0.html
 - Type punning and memory safety: https://en.cppreference.com/w/cpp/language/reinterpret_cast
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -1456,6 +1471,8 @@ if (type_id == TypeID::Int) {
 - cppreference — reinterpret_cast: https://en.cppreference.com/w/cpp/language/reinterpret_cast
 - cppreference — dynamic_cast: https://en.cppreference.com/w/cpp/language/dynamic_cast
 - C++ Standard (expr.cast): Low-level specification of type conversions
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -1775,6 +1792,8 @@ else if (reflected_value.type == ValueType::String) {
 - Runtime polymorphism without virtual functions: https://en.cppreference.com/w/cpp/language/pimpl
 - Dynamic typing in C++: https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
 
+[Back to Table of Contents](#table-of-contents)
+
 ---
 
 ## Direct (Non-Proxy) Access for Scalars
@@ -1851,6 +1870,8 @@ Proxies provide these behaviors by implementing Python object slots (`tp_getattr
 - Python C API — Numeric objects: https://docs.python.org/3/c-api/number.html
 - Python C API — Unicode objects: https://docs.python.org/3/c-api/unicode.html
 - Python C API — Boolean objects: https://docs.python.org/3/c-api/bool.html
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -2157,6 +2178,8 @@ static void PlayerProxy_dealloc(PlayerProxy* self) {
 - Python C API — Number protocol: https://docs.python.org/3/c-api/number.html
 - Python C API — Mapping protocol: https://docs.python.org/3/c-api/mapping.html
 - Reference counting and garbage collection: https://docs.python.org/3/c-api/refcounting.html
+
+[Back to Table of Contents](#table-of-contents)
 
 ---
 
