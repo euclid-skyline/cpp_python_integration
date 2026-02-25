@@ -932,7 +932,104 @@ static BoundValue *get_value_raw(const std::string &name) {
 PyObject *PyBoundInt::to_python() {
     return PyLong_FromLong(*m_ptr);
 }
-```
+
+@@---
+
+@@#### `static PyBoundValue *PyInterface::get_value(const std::string &name)`
+
+@@**Purpose:** Look up scalar variable by name and return as PyBoundValue*. For structs and vectors, returns nullptr.
+
+@@**Implementation:**
+@@```cpp
+@@static PyBoundValue *get_value(const std::string &name) {
+@@    auto it = g_values.find(name);
+@@    return (it != g_values.end())
+@@               ? dynamic_cast<PyBoundValue *>(it->second.get())
+@@               : nullptr;
+@@}
+@@```
+
+@@**Usage:** Used by module attribute access when reading/writing scalar values (int, float, bool, string).
+
+@@**Returns:** 
+@@- `PyBoundValue*` if variable exists and is scalar type
+@@- `nullptr` if not found or is struct/vector (proxy types handle those)
+
+@@---
+
+@@#### `static PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)`
+
+@@**Purpose:** Create the appropriate PyBoundValue subclass wrapper for a struct field.
+
+@@**Implementation:**
+@@```cpp
+@@static PyBoundValue *wrap_field(const FieldInfo *field, void *fieldPtr) {
+@@    switch (field->type) {
+@@    case ValueType::Int:
+@@        return new PyBoundInt(field->name, *static_cast<int *>(fieldPtr));
+@@    case ValueType::Float:
+@@        return new PyBoundFloat(field->name, *static_cast<float *>(fieldPtr));
+@@    case ValueType::Bool:
+@@        return new PyBoundBool(field->name, *static_cast<ByteBool *>(fieldPtr));
+@@    case ValueType::String:
+@@        return new PyBoundString(field->name, *static_cast<std::string *>(fieldPtr));
+@@    case ValueType::Struct:
+@@    case ValueType::Vector:
+@@        return nullptr;  // Handled by proxies, not wrapped as scalars
+@@    default:
+@@        return nullptr;
+@@    }
+@@}
+@@```
+
+@@**Parameters:**
+@@- `field`: FieldInfo describing the field (type, name, offset)
+@@- `fieldPtr`: Pointer to actual field memory (already offset-calculated)
+
+@@**Returns:**
+@@- PyBoundInt/Float/Bool/String for scalar types
+@@- nullptr for struct/vector types (caller handles with proxy)
+
+@@**Usage:** Called when accessing struct fields from Python to marshal scalar values.
+
+@@---
+
+@@#### `static PyBoundValue *PyInterface::wrap_vector_element(BoundVector *vec, void *elemPtr)`
+
+@@**Purpose:** Create the appropriate PyBoundValue subclass wrapper for a vector element.
+
+@@**Implementation:**
+@@```cpp
+@@static PyBoundValue *wrap_vector_element(BoundVector *vec, void *elemPtr) {
+@@    const VectorInfo *info = vec->info();
+@@    
+@@    switch (info->element_type) {
+@@    case ValueType::Int:
+@@        return new PyBoundInt(vec->name, *static_cast<int *>(elemPtr));
+@@    case ValueType::Float:
+@@        return new PyBoundFloat(vec->name, *static_cast<float *>(elemPtr));
+@@    case ValueType::Bool:
+@@        return new PyBoundBool(vec->name, *static_cast<ByteBool *>(elemPtr));
+@@    case ValueType::String:
+@@        return new PyBoundString(vec->name, *static_cast<std::string *>(elemPtr));
+@@    case ValueType::Struct:
+@@    case ValueType::Vector:
+@@        return nullptr;  // Handled by proxies, not wrapped as scalars
+@@    default:
+@@        return nullptr;
+@@    }
+@@}
+@@```
+
+@@**Parameters:**
+@@- `vec`: BoundVector wrapper (holds VectorInfo metadata)
+@@- `elemPtr`: Pointer to actual element memory (returned by BoundVector::element_ptr())
+
+@@**Returns:**
+@@- PyBoundInt/Float/Bool/String for scalar element types
+@@- nullptr for struct/vector element types (caller handles with proxy)
+
+@@**Usage:** Called when accessing vector elements from Python (e.g., `cpp.scores[2]`) to marshal scalar element values.
 
 **Example:**
 ```cpp

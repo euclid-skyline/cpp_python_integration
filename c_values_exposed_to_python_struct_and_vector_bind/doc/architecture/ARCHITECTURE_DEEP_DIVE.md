@@ -753,6 +753,8 @@ class PyBoundInt : public PyBoundValue {
         *m_ptr = (int)value;  // Python 42 → *m_ptr = 42
         return true;
     }
+
+
 };
 
 // For std::string*
