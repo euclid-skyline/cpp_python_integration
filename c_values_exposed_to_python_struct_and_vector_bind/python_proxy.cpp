@@ -339,6 +339,11 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     }
 
     void *fieldPtr = proxy->bound->get_field_ptr(field);
+    if (!fieldPtr)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to resolve field pointer");
+        return nullptr;
+    }
 
     // Handle directly based on field type
     switch (field->type)
@@ -397,6 +402,12 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
 {
     StructProxyObject *proxy = (StructProxyObject *)self;
 
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: StructProxy has null BoundStruct");
+        return -1;
+    }
+
     const char *name = PyUnicode_AsUTF8(attr);
     if (!name)
     {
@@ -412,6 +423,11 @@ static int StructProxy_setattro(PyObject *self, PyObject *attr, PyObject *value)
     }
 
     void *fieldPtr = proxy->bound->get_field_ptr(field);
+    if (!fieldPtr)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to resolve field pointer");
+        return -1;
+    }
 
     // Handle assignment based on field type
     switch (field->type)
@@ -583,6 +599,8 @@ static void VectorProxy_dealloc(PyObject *self)
 static Py_ssize_t VectorProxy_len(PyObject *self)
 {
     VectorProxyObject *proxy = (VectorProxyObject *)self;
+    if (!proxy || !proxy->bound)
+        return 0;
     return proxy->bound->size();
 }
 
@@ -592,6 +610,12 @@ static Py_ssize_t VectorProxy_len(PyObject *self)
 static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
 {
     VectorProxyObject *proxy = (VectorProxyObject *)self;
+
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorProxy has null BoundVector");
+        return nullptr;
+    }
 
     Py_ssize_t size = static_cast<Py_ssize_t>(proxy->bound->size());
 
@@ -612,6 +636,11 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
         return nullptr;
     }
     const VectorInfo *info = proxy->bound->info();
+    if (!info)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return nullptr;
+    }
 
     // Handle directly based on element type
     switch (info->element_type)
@@ -668,6 +697,12 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
 {
     VectorProxyObject *proxy = (VectorProxyObject *)self;
 
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorProxy has null BoundVector");
+        return -1;
+    }
+
     Py_ssize_t size = static_cast<Py_ssize_t>(proxy->bound->size());
 
     // Support negative indexing
@@ -687,6 +722,11 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
         return -1;
     }
     const VectorInfo *info = proxy->bound->info();
+    if (!info)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return -1;
+    }
 
     // Handle assignment based on element type
     switch (info->element_type)
@@ -760,6 +800,11 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     }
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
+    if (!info)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return nullptr;
+    }
 
     // Only works for struct element types
     if (info->element_type != ValueType::Struct)
@@ -832,6 +877,11 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
     }
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
+    if (!info)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return nullptr;
+    }
 
     // Only works for vector element types
     if (info->element_type != ValueType::Vector)
@@ -915,8 +965,18 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
 static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 {
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorProxy has null BoundVector");
+        return nullptr;
+    }
     BoundVector *vec = proxy->bound;
     const VectorInfo *info = vec->info();
+    if (!info)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return nullptr;
+    }
 
     switch (info->element_type)
     {
@@ -1001,7 +1061,13 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
             return nullptr;
         }
         BoundStruct *bs = sp->bound;
-        vec->append_from_cpp(bs->instance());
+        void *struct_instance = bs->instance();
+        if (!struct_instance)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to resolve struct instance");
+            return nullptr;
+        }
+        vec->append_from_cpp(struct_instance);
         break;
     }
 
@@ -1023,6 +1089,11 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
         }
         BoundVector *inner = vp->bound;
         void *inner_raw = inner->raw_vector();
+        if (!inner_raw)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to resolve vector pointer");
+            return nullptr;
+        }
         vec->append_from_cpp(inner_raw); // FIXED: pass pointer directly, not address
         break;
     }
@@ -1067,6 +1138,12 @@ static PyObject *VectorIterator_next(PyObject *self)
 {
     VectorIteratorObject *it = (VectorIteratorObject *)self;
     VectorProxyObject *proxy = (VectorProxyObject *)it->vector;
+
+    if (!proxy || !proxy->bound)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: VectorIterator has invalid vector");
+        return nullptr;
+    }
 
     // Check if we've reached the end
     if (it->index >= proxy->bound->size())

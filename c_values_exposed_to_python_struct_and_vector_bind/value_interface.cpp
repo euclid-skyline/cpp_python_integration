@@ -32,6 +32,9 @@ PyBoundValue *PyInterface::get_value(const std::string &name)
 // ============================================================
 PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)
 {
+    if (!field || !fieldPtr)
+        return nullptr;
+
     switch (field->type)
     {
     // ------------------------------------------------------------
@@ -68,6 +71,9 @@ PyBoundValue *PyInterface::wrap_field(const FieldInfo *field, void *fieldPtr)
 // ============================================================
 PyBoundValue *PyInterface::wrap_vector_element(BoundVector *vec, void *elemPtr)
 {
+    if (!vec || !elemPtr)
+        return nullptr;
+
     const VectorInfo *info = vec->info();
 
     switch (info->element_type)
