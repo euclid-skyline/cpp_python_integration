@@ -606,6 +606,11 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     }
 
     void *elemPtr = proxy->bound->element_ptr(index);
+    if (!elemPtr)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get element pointer");
+        return nullptr;
+    }
     const VectorInfo *info = proxy->bound->info();
 
     // Handle directly based on element type
@@ -676,6 +681,11 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
     }
 
     void *elemPtr = proxy->bound->element_ptr(index);
+    if (!elemPtr)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get element pointer");
+        return -1;
+    }
     const VectorInfo *info = proxy->bound->info();
 
     // Handle assignment based on element type

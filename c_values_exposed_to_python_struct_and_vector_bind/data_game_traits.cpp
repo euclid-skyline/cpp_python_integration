@@ -14,7 +14,10 @@ std::size_t int_vec_size(void *ptr)
 
 void *int_vec_element_ptr(void *ptr, std::size_t idx)
 {
-    return &(*reinterpret_cast<std::vector<int> *>(ptr))[idx];
+    auto *vec = reinterpret_cast<std::vector<int> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
 }
 
 bool int_vec_append(void *ptr, void *val)
@@ -41,7 +44,10 @@ std::size_t enemy_vec_size(void *ptr)
 
 void *enemy_vec_element_ptr(void *ptr, std::size_t idx)
 {
-    return &(*reinterpret_cast<std::vector<Enemy> *>(ptr))[idx];
+    auto *vec = reinterpret_cast<std::vector<Enemy> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
 }
 
 bool enemy_vec_append(void *ptr, void *val)
@@ -68,7 +74,10 @@ std::size_t grid_vec_size(void *ptr)
 
 void *grid_vec_element_ptr(void *ptr, std::size_t idx)
 {
-    return &(*reinterpret_cast<std::vector<std::vector<int>> *>(ptr))[idx];
+    auto *vec = reinterpret_cast<std::vector<std::vector<int>> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
 }
 
 bool grid_vec_append(void *ptr, void *val)
@@ -95,7 +104,10 @@ std::size_t enemy_waves_vec_size(void *ptr)
 
 void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx)
 {
-    return &(*reinterpret_cast<std::vector<std::vector<Enemy>> *>(ptr))[idx];
+    auto *vec = reinterpret_cast<std::vector<std::vector<Enemy>> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
 }
 
 bool enemy_waves_vec_append(void *ptr, void *val)

@@ -11,7 +11,7 @@
 
 This document contains 21 additional issues (Issues 29-49) identified from a comprehensive source code review. These issues are separate from the original 28 issues (tracked in CODE_REVIEW.md) which have already been resolved or are in progress.
 
-**Status:** 17 issues FIXED. Issues 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 41, 42, 44, 45, 46, 47, 48, and 49 have been FIXED and deployed. Only 4 remaining UNDER REVIEW (Issues 38, 40, 43) are lower priority code quality items.
+**Status:** 18 issues FIXED. Issues 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 41, 42, 44, 45, 46, 47, 48, and 49 have been FIXED and deployed. Only 2 remaining UNDER REVIEW (Issues 38, 43) are lower priority code quality items.
 
 ---
 
@@ -682,8 +682,8 @@ PyObject *create_cpp_proxy()
 ---
 
 ### Issue 40: No Bounds Checking in Vector Element Access
-**Status:** ⚠️ UNDER REVIEW  
-**File:** `data_game_traits.cpp`, multiple functions  
+**Status:** ✅ FIXED  
+**File:** `data_game_traits.cpp`, `python_proxy.cpp`  
 **Severity:** MEDIUM  
 **Category:** Safety / Robustness
 
@@ -720,16 +720,73 @@ void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx)
 
 **Impact:** Out-of-bounds access causes undefined behavior instead of clear error.
 
-**Recommended Fix:**
+**Solution Applied:** ✅
+
+Added bounds checking to all four element_ptr functions in [data_game_traits.cpp](data_game_traits.cpp):
+
 ```cpp
+void *int_vec_element_ptr(void *ptr, std::size_t idx)
+{
+    auto *vec = reinterpret_cast<std::vector<int> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
+}
+
+void *enemy_vec_element_ptr(void *ptr, std::size_t idx)
+{
+    auto *vec = reinterpret_cast<std::vector<Enemy> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
+    return &(*vec)[idx];
+}
+
 void *grid_vec_element_ptr(void *ptr, std::size_t idx)
 {
     auto *vec = reinterpret_cast<std::vector<std::vector<int>> *>(ptr);
     if (idx >= vec->size())
-        return nullptr;  // Signal error to caller
+        return nullptr;
+    return &(*vec)[idx];
+}
+
+void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx)
+{
+    auto *vec = reinterpret_cast<std::vector<std::vector<Enemy>> *>(ptr);
+    if (idx >= vec->size())
+        return nullptr;
     return &(*vec)[idx];
 }
 ```
+
+Added defensive nullptr checks in [python_proxy.cpp](python_proxy.cpp) after calling `element_ptr()`:
+
+```cpp
+// In VectorProxy_getitem:
+void *elemPtr = proxy->bound->element_ptr(index);
+if (!elemPtr)
+{
+    PyErr_SetString(PyExc_RuntimeError, "Failed to get element pointer");
+    return nullptr;
+}
+
+// In VectorProxy_setitem:
+void *elemPtr = proxy->bound->element_ptr(index);
+if (!elemPtr)
+{
+    PyErr_SetString(PyExc_RuntimeError, "Failed to get element pointer");
+    return -1;
+}
+```
+
+**Result:**
+- All element_ptr functions return nullptr for out-of-bounds access
+- Callers in python_proxy.cpp handle nullptr return with clear error messages
+- Defense-in-depth: bounds checking at both vector helper level and caller level
+- Prevents undefined behavior from potential logic errors or edge cases
+
+**Files Modified:**
+- [data_game_traits.cpp](data_game_traits.cpp) - Added bounds checking to all 4 element_ptr functions
+- [python_proxy.cpp](python_proxy.cpp) - Added nullptr checks in VectorProxy_getitem and VectorProxy_setitem
 
 ---
 
@@ -1124,9 +1181,9 @@ std::vector<std::vector<Enemy>> enemy_waves = {};  // Explicitly initialized
 |----------|-------|--------|
 | CRITICAL | 1 | 46 |
 | HIGH | 6 | 34, 35, 36, 37, 47, 49 |
-| MEDIUM | 4 | 38, 39, 40, 41 |
+| MEDIUM | 1 | 38 |
 | LOW | 5 | 30, 42, 43, 44, 45 |
-| **FIXED** | **5** | **29, 31, 32, 33, 48** |
+| **FIXED** | **8** | **29, 31, 32, 33, 39, 40, 41, 48** |
 
 **Additional Critical Issues Found:**
 
@@ -1356,9 +1413,9 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 |----------|-------|--------|
 | CRITICAL | 0 | — |
 | HIGH | 0 | — |
-| MEDIUM | 2 | 38, 40 |
+| MEDIUM | 1 | 38 |
 | LOW | 1 | 43 |
-| **FIXED** | **17** | **29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 41, 42, 44, 45, 46, 47, 48, 49** |
+| **FIXED** | **18** | **29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, 41, 42, 44, 45, 46, 47, 48, 49** |
 
 **Distribution by Category:**
 
@@ -1372,6 +1429,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 | Thread Safety | 1 | 34 ✅ |
 | Error Handling | 1 | 37 ✅ |
 | Type Safety | 1 | 38 |
+| Robustness | 1 | 40 ✅ |
 | Robustness | 1 | 40 |
 | Defensive Programming | 1 | 41 ✅ |
 | Python C-API Semantics | 1 | 39 ✅ |
@@ -1400,6 +1458,7 @@ return VectorProxy_New(bvec, self); // Pass parent to keep it alive
 16. **Issue 47** ✅ FIXED - Zero-size validation after calculate_struct_size
 17. **Issue 48** ✅ FIXED - Parent lifetime management for nested proxy objects
 18. **Issue 49** ✅ FIXED - Error message lists available variables in root proxy path
+19. **Issue 40** ✅ FIXED - Bounds checking in vector element access
 
 ### Immediate Action Items (Next Sprint)
 All critical, high-priority, and low-priority issues have been resolved. Only medium-priority code quality items remain.
@@ -1407,7 +1466,6 @@ All critical, high-priority, and low-priority issues have been resolved. Only me
 ### Important (Following Sprint)
 No HIGH priority issues remaining. Only medium-priority items:
 1. **Issue 38** - Add weak type safety to void* vector operations (optional enhancement)
-2. **Issue 40** - Bounds checking in vector element access (optional enhancement)
 
 ### Nice to Have (Development Backlog)
 Issue 43 - Inconsistent vector helper function naming (style preference)
@@ -1426,6 +1484,6 @@ The following new issues relate to previously identified and fixed issues in COD
 - **Issue 48** - Extends Issue 26 (Option B dynamic element resolution) with lifetime safety
 - **Issue 49** - Relates to Issue 6 (error message improvements) for root vs module proxy parity
 
-**Review Result (Issues 1-28):** Verified on February 23, 2026. Overlaps found: Issue 30 and Issue 49 align with Issue 6 (error message improvements); Issue 36 is partially covered by Issue 23 for proxy accessors but still requires a full audit outside those call sites; Issue 35 mirrors the Issue 32 pattern but in StructProxy_getattro. All other Issues 33, 37, 38, 40, 41, 42, 43, 44, 45, 46, and 47 are not addressed by Issues 1-28.
+**Review Result (Issues 1-28):** Verified on February 23, 2026. Overlaps found: Issue 30 and Issue 49 align with Issue 6 (error message improvements); Issue 36 is partially covered by Issue 23 for proxy accessors but still requires a full audit outside those call sites; Issue 35 mirrors the Issue 32 pattern but in StructProxy_getattro. All other Issues 33, 37, 38, 40 (now fixed), 41, 42, 43, 44, 45, 46, and 47 are not addressed by Issues 1-28.
 
 ---
