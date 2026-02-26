@@ -675,7 +675,7 @@ if (MyTrait<T>::value) {
 
 ### Standard Type Traits Library
 
-C++ provides built-in type traits in `<type_traits>`:
+C++ provides built-in type traits in `<type_traits>`. These are compile-time predicates and transformations that let you query or transform types without runtime overhead.
 
 ```cpp
 #include <type_traits>
@@ -689,10 +689,73 @@ std::is_const_v<const int>              // true
 std::is_class_v<MyStruct>               // true (if MyStruct is a class)
 ```
 
+**What `std::is_integral_v<T>` means:** returns true for integral types (bool, char, short, int, long, long long, and their unsigned variants). It returns false for floating-point, class, pointer, or user-defined types.
+
+**What `std::is_floating_point_v<T>` means:** returns true for floating-point types (float, double, long double). It returns false for integral and non-floating types.
+
 **Note:** The `_v` suffix is C++17. In older C++:
 ```cpp
 std::is_integral<int>::value            // older style
 std::is_integral_v<int>                 // C++17+ (same result)
+```
+
+**std::true_type and std::false_type:** these are helper types in `<type_traits>`. They are aliases of `std::integral_constant<bool, true>` and `std::integral_constant<bool, false>`, and they provide a `static constexpr bool value` member plus implicit conversion to bool. Type traits typically inherit from one of these to define their compile-time boolean result.
+
+**Related type trait families (same purpose: compile-time type queries):**
+
+Primary type categories:
+```cpp
+std::is_void_v<T>               // T is void
+std::is_null_pointer_v<T>       // T is std::nullptr_t
+std::is_integral_v<T>           // T is an integral type
+std::is_floating_point_v<T>     // T is a floating-point type
+std::is_array_v<T>              // T is an array type
+std::is_enum_v<T>               // T is an enum
+std::is_union_v<T>              // T is a union
+std::is_class_v<T>              // T is a class or struct
+std::is_function_v<T>           // T is a function type
+std::is_pointer_v<T>            // T is a pointer type
+std::is_lvalue_reference_v<T>   // T is an lvalue reference
+std::is_rvalue_reference_v<T>   // T is an rvalue reference
+```
+
+Composite categories:
+```cpp
+std::is_arithmetic_v<T>         // integral or floating-point
+std::is_fundamental_v<T>        // arithmetic, void, or std::nullptr_t
+std::is_scalar_v<T>             // arithmetic, enum, pointer, member pointer, or nullptr_t
+std::is_object_v<T>             // not a function, reference, or void
+std::is_compound_v<T>           // not a fundamental type
+std::is_reference_v<T>          // lvalue or rvalue reference
+```
+
+Type properties:
+```cpp
+std::is_const_v<T>              // const-qualified
+std::is_volatile_v<T>           // volatile-qualified
+std::is_signed_v<T>             // signed arithmetic type
+std::is_unsigned_v<T>           // unsigned arithmetic type
+std::is_trivial_v<T>            // trivial type
+std::is_polymorphic_v<T>        // has virtual functions
+std::is_abstract_v<T>           // has at least one pure virtual function
+std::is_empty_v<T>              // empty class type
+```
+
+Type relationships:
+```cpp
+std::is_same_v<T, U>            // T and U are the same type
+std::is_base_of_v<Base, Derived>// Base is a base of Derived
+std::is_convertible_v<From, To> // From is implicitly convertible to To
+```
+
+Type transformations (also in `<type_traits>`):
+```cpp
+std::remove_const_t<T>          // remove const qualification
+std::remove_reference_t<T>      // remove lvalue/rvalue reference
+std::remove_pointer_t<T>        // remove pointer
+std::add_const_t<T>             // add const qualification
+std::add_pointer_t<T>           // add pointer
+std::decay_t<T>                 // array/function to pointer, remove cv-ref
 ```
 
 ---
