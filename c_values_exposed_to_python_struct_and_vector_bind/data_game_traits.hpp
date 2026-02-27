@@ -1,34 +1,7 @@
 #pragma once
 #include <vector>
-#include <string>
-#include <cstddef> // for std::size_t
 
-#include "value_interface.hpp" // BoundValue, ValueType
-
-// Forward declarations for function pointers
-std::size_t int_vec_size(void *ptr);
-void *int_vec_element_ptr(void *ptr, std::size_t idx);
-bool int_vec_append(void *ptr, void *val);
-void *int_vec_create_empty();
-void int_vec_destroy(void *ptr);
-
-std::size_t enemy_vec_size(void *ptr);
-void *enemy_vec_element_ptr(void *ptr, std::size_t idx);
-bool enemy_vec_append(void *ptr, void *val);
-void *enemy_vec_create_empty();
-void enemy_vec_destroy(void *ptr);
-
-std::size_t grid_vec_size(void *ptr);
-void *grid_vec_element_ptr(void *ptr, std::size_t idx);
-bool grid_vec_append(void *ptr, void *val);
-void *grid_vec_create_empty();
-void grid_vec_destroy(void *ptr);
-
-std::size_t enemy_waves_vec_size(void *ptr);
-void *enemy_waves_vec_element_ptr(void *ptr, std::size_t idx);
-bool enemy_waves_vec_append(void *ptr, void *val);
-void *enemy_waves_vec_create_empty();
-void enemy_waves_vec_destroy(void *ptr);
+#include "interface_builder.hpp" // REGISTER_STRUCT, REGISTER_VECTOR, FIELD
 
 // 1. Simple struct
 struct Player
@@ -36,73 +9,25 @@ struct Player
     int health;
     float speed;
 };
-// Meta info for Player struct
-static StructInfo PlayerInfo = {
-    "Player",
-    {
-        {"health", offsetof(Player, health), ValueType::Int, nullptr},
-        {"speed", offsetof(Player, speed), ValueType::Float, nullptr},
-    }};
-// Specialize the trait to mark Player as a reflected struct
-template <>
-struct is_reflected_struct<Player> : std::true_type
-{
-};
-
-template <>
-inline const StructInfo *get_struct_info<Player>()
-{
-    return &PlayerInfo;
-}
+REGISTER_STRUCT(Player, "Player",
+                FIELD(Player, health, Int, nullptr),
+                FIELD(Player, speed, Float, nullptr))
 
 // 2. Vector of simple types
 extern std::vector<int> scores;
-// Meta info for vector of ints
-static VectorInfo IntVectorInfo = {
-    ValueType::Int,
-    nullptr,
-    int_vec_size,
-    int_vec_element_ptr,
-    int_vec_append,
-    int_vec_create_empty,
-    int_vec_destroy};
-// Specialize the trait to mark std::vector<int> as a reflected vector
-template <>
-inline const VectorInfo *get_vector_info<int>()
-{
-    return &IntVectorInfo;
-}
+REGISTER_VECTOR(int, Int, nullptr)
 
-// 3) Struct containing a vector
+// 3. Struct containing a vector
 struct Team
 {
     std::vector<int> scores;
     float average;
 };
-// Metadata for inner vector
-// static VectorInfo IntVectorInfo = { // Issue: duplicate symbol IntVectorInfo
-//     ValueType::Int,
-//     nullptr};
-// Metadata for struct fields
-static StructInfo TeamInfo = {
-    "Team",
-    {
-        {"scores", offsetof(Team, scores), ValueType::Vector, &IntVectorInfo},
-        {"average", offsetof(Team, average), ValueType::Float, nullptr},
-    }};
-// Specialize the trait to mark Team as a reflected struct
-template <>
-struct is_reflected_struct<Team> : std::true_type
-{
-};
+REGISTER_STRUCT(Team, "Team",
+                FIELD(Team, scores, Vector, get_vector_info<int>()),
+                FIELD(Team, average, Float, nullptr))
 
-template <>
-inline const StructInfo *get_struct_info<Team>()
-{
-    return &TeamInfo;
-}
-
-// 4) Vector containing structs
+// 4. Vector containing structs
 struct Enemy
 {
     int health;
@@ -110,82 +35,15 @@ struct Enemy
 };
 
 extern std::vector<Enemy> enemies;
-// Metadata for Enemy struct
-static StructInfo EnemyInfo = {
-    "Enemy",
-    {
-        {"health", offsetof(Enemy, health), ValueType::Int, nullptr},
-        {"x", offsetof(Enemy, x), ValueType::Float, nullptr},
-    }};
-// Metadata for vector of Enemy structs
-static VectorInfo EnemyVectorInfo = {
-    ValueType::Struct,
-    &EnemyInfo,
-    enemy_vec_size,
-    enemy_vec_element_ptr,
-    enemy_vec_append,
-    enemy_vec_create_empty,
-    enemy_vec_destroy};
-// Specialize the trait to mark std::vector<Enemy> as a reflected vector
-template <>
-struct is_reflected_struct<Enemy> : std::true_type
-{
-};
+REGISTER_STRUCT(Enemy, "Enemy",
+                FIELD(Enemy, health, Int, nullptr),
+                FIELD(Enemy, x, Float, nullptr))
+REGISTER_VECTOR(Enemy, Struct, get_struct_info<Enemy>())
 
-template <>
-inline const StructInfo *get_struct_info<Enemy>()
-{
-    return &EnemyInfo;
-}
-
-template <>
-inline const VectorInfo *get_vector_info<Enemy>()
-{
-    return &EnemyVectorInfo;
-}
-
-// 5) Vector containing vectors
+// 5. Vector containing vectors
 extern std::vector<std::vector<int>> grid;
-// Metadata for inner vector
-// static VectorInfo IntVectorInfo = { // Issue: duplicate symbol IntVectorInfo
-//     ValueType::Int,
-//     nullptr};
-// Metadata for outer vector
-static VectorInfo VectorOfIntVectorInfo = {
-    ValueType::Vector,
-    &IntVectorInfo,
-    grid_vec_size,
-    grid_vec_element_ptr,
-    grid_vec_append,
-    grid_vec_create_empty,
-    grid_vec_destroy};
+REGISTER_VECTOR(std::vector<int>, Vector, get_vector_info<int>())
 
-// Specialize get_vector_info for the element type of grid's outer vector
-// grid is std::vector<std::vector<int>>, so its element type is std::vector<int>
-template <>
-inline const VectorInfo *get_vector_info<std::vector<int>>()
-{
-    return &VectorOfIntVectorInfo;
-}
-
-// 6) Vector containing vectors of Enemy structs
+// 6. Vector containing vectors of Enemy structs
 extern std::vector<std::vector<Enemy>> enemy_waves;
-// Metadata for vector of Enemy vectors
-static VectorInfo VectorOfEnemyVectorInfo = {
-    ValueType::Vector,
-    &EnemyVectorInfo,
-    enemy_waves_vec_size,
-    enemy_waves_vec_element_ptr,
-    enemy_waves_vec_append,
-    enemy_waves_vec_create_empty,
-    enemy_waves_vec_destroy};
-
-// Specialize get_vector_info for the element type of enemy_waves's outer vector
-// enemy_waves is std::vector<std::vector<Enemy>>, so its element type is std::vector<Enemy>
-template <>
-inline const VectorInfo *get_vector_info<std::vector<Enemy>>()
-{
-    return &VectorOfEnemyVectorInfo;
-}
-
-//-------------------------------------------------------
+REGISTER_VECTOR(std::vector<Enemy>, Vector, get_vector_info<Enemy>())
