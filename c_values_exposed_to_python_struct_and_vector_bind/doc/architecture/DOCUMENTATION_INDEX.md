@@ -94,13 +94,14 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ### Path 5: "I want to understand ownership and memory safety"
 1. Read: **OWNERSHIP_MODELS_GUIDE.md** → Sections 1-4 (Fundamentals through Complex Types)
-2. Read: **SCALAR_VS_COMPLEX_OWNERSHIP.md** → Comparison matrix and examples
-3. Read: **WRAPPER_OWNERSHIP_PATTERN.md** → Detailed pattern explanation
-4. Read: **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** → Parent tracking for nested structures
-5. Reference: **OWNERSHIP_MODELS_GUIDE.md** → Decision tree and summary table
+2. Read: **POINTER_SEMANTICS_GUIDE.md** → Complete guide on metadata vs data pointers
+3. Read: **SCALAR_VS_COMPLEX_OWNERSHIP.md** → Comparison matrix and examples
+4. Read: **WRAPPER_OWNERSHIP_PATTERN.md** → Detailed pattern explanation
+5. Read: **PARENT_TRACKING_IMPLEMENTATION_GUIDE.md** → Parent tracking for nested structures
+6. Reference: **OWNERSHIP_MODELS_GUIDE.md** → Decision tree and summary table
 
-**Time:** ~50 minutes  
-**Outcome:** Complete understanding of all ownership models and reference counting
+**Time:** ~70 minutes  
+**Outcome:** Complete understanding of all ownership models, pointer semantics, and reference counting
 
 ---
 
@@ -142,6 +143,18 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 
 ### "What errors could happen?"
 → DESIGN_PATTERNS_AND_EXTENSIBILITY.md Section V (Common Pitfalls)
+
+### "Why can element_meta be const void*?"
+→ POINTER_SEMANTICS_GUIDE.md Section: Design Implications
+
+### "What's the difference between metadata and data pointers?"
+→ POINTER_SEMANTICS_GUIDE.md (complete guide)
+
+### "Why do data pointers become invalid after vector reallocation?"
+→ POINTER_SEMANTICS_GUIDE.md Section: Data Pointers
+
+### "Can I cache pointers to vector elements?"
+→ POINTER_SEMANTICS_GUIDE.md Section: Why This Distinction Matters
 
 ---
 
@@ -406,6 +419,33 @@ This documentation set provides a comprehensive understanding of the C++/Python 
 - Nested structures use parent reference counting (prevents use-after-free)
 - Thread-safe singleton with std::mutex (prevents race conditions)
 - All proxy returns are NEW references (caller must Py_DECREF)
+
+---
+
+### 12. **POINTER_SEMANTICS_GUIDE.md** – METADATA VS DATA POINTERS
+**Purpose:** Clarifies the critical distinction between metadata pointers and data pointers  
+**Reading Time:** 20-30 minutes  
+**Best For:** Understanding pointer mutability requirements and memory layout
+
+**Covers:**
+- Two memory regions: static (metadata) vs heap (data)
+- What is metadata (type descriptions: StructInfo, VectorInfo)
+- What is data (actual values: struct instances, vector elements)
+- Why metadata pointers never move (static storage)
+- Why data pointers can move (vector reallocation)
+- Complete lifecycle example with memory diagrams
+- Why element_meta can be const void*
+- Why data pointers need dynamic resolution
+- Common misconceptions about pointer semantics
+- Real-world analogy: recipe book (metadata) vs ingredients (data)
+
+**Key Insights:**
+- Metadata lives in static memory with fixed addresses (never moves)
+- Data lives in heap memory with runtime addresses (can move during reallocation)
+- VectorInfo.element_meta points to metadata (safe to be const)
+- BoundVector.m_vec_ptr points to data (requires dynamic resolution)
+- Understanding this distinction prevents dangling pointer bugs
+- Cached metadata pointers are safe; cached data pointers are dangerous
 
 ---
 

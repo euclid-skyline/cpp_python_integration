@@ -266,6 +266,26 @@ You now have a comprehensive documentation set (~7,000+ lines) explaining the C+
 
 ---
 
+### Memory and Pointer Semantics (1 document)
+
+**Document 12: POINTER_SEMANTICS_GUIDE.md** – Metadata vs Data Pointers (NEW)
+- ✅ Critical distinction between metadata pointers and data pointers
+- ✅ Two memory regions: static memory (metadata) vs heap (data)
+- ✅ What is metadata: type descriptions that never move
+- ✅ What is data: actual values that can move during reallocation
+- ✅ Complete lifecycle example with memory address diagrams
+- ✅ Why metadata pointers can be const void* (safe to cache)
+- ✅ Why data pointers need dynamic resolution (reallocation invalidates them)
+- ✅ Visual comparison of pointer behavior during vector operations
+- ✅ Common misconceptions and anti-patterns explained
+- ✅ Real-world analogy: recipe book (metadata) vs ingredients (data)
+- ✅ Design implications for const correctness
+- ✅ Summary comparison table of both pointer types
+
+**Best For:** Understanding memory layout, why element_meta can be const, avoiding dangling pointer bugs
+
+---
+
 [Back to Table of Contents](#table-of-contents)
 
 

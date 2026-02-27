@@ -15,8 +15,8 @@ struct StructInfo;
 // Metadata for vector elements
 struct VectorInfo
 {
-    ValueType element_type; // Int, Float, Bool, String, Struct, ...
-    void *element_meta;     // e.g. StructInfo* if element_type == Struct or VectorInfo* if element_type == Vector (for nested vectors)
+    ValueType element_type;   // Int, Float, Bool, String, Struct, ...
+    const void *element_meta; // e.g. StructInfo* if element_type == Struct or VectorInfo* if element_type == Vector (for nested vectors)
 
     // Function pointers for type-erased operations
     std::size_t (*size_fn)(void *vec_ptr);

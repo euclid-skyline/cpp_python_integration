@@ -16,9 +16,9 @@ class BoundVector;
 struct FieldInfo
 {
     std::string name;
-    size_t offset;   // byte offset from struct base
-    ValueType type;  // Int, Float, Bool, String, Struct, Vector
-    void *type_meta; // optional: points to StructInfo / VectorInfo if needed
+    size_t offset;         // byte offset from struct base
+    ValueType type;        // Int, Float, Bool, String, Struct, Vector
+    const void *type_meta; // optional: points to StructInfo / VectorInfo if needed
 };
 
 struct StructInfo
