@@ -127,10 +127,10 @@ def update_values():
 
         # -----------------------------------------------------------------------
         # STEP 7: Optional character mutation (glitch effect)
-        # 10% chance per frame to randomly change one character in the trail
-        # Creates dynamic "digital rain" appearance
+        # 20% chance per frame to change the HEAD character at column.pos
+        # (head is chars[trail - 1], the brightest glyph on screen)
         # -----------------------------------------------------------------------
-        if random.random() < 0.1 and column.trail > 0:
+        if random.random() < 0.3 and column.trail > 0:
             chars = column.chars
 
             # Ensure chars string matches trail length (safety check)
@@ -139,13 +139,15 @@ def update_values():
                     random.choice(MATRIX_CHARS) for _ in range(column.trail)
                 )
 
-            # Pick random position in trail and replace with new character
-            mutation_index = random.randint(0, column.trail - 1)
-            chars = (
-                chars[:mutation_index]
-                + random.choice(MATRIX_CHARS)
-                + chars[mutation_index + 1 :]
-            )
+            # Mutate at column.pos (HEAD): this maps to chars[trail - 1]
+            mutation_index = column.trail - 1
+
+            old_char = chars[mutation_index]
+            new_char = old_char
+            while new_char == old_char:
+                new_char = random.choice(MATRIX_CHARS)
+
+            chars = chars[:mutation_index] + new_char + chars[mutation_index + 1 :]
             column.chars = chars  # Mutate C++ string
 
     # -----------------------------------------------------------------------
