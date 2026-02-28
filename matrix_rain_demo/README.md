@@ -94,35 +94,47 @@ Let me explain with a concrete example first, then detail each variable:
 - Column at X=10 (horizontal position, 10th character from left)
 - `chars = "ABC"` (3-character string)
 - `trail = 3` (length of chars string)
-- `pos = 5.0` (Y position - this is the HEAD/BOTTOM character position)
+- `pos = 0.0` (Y position - starts at TOP of screen on Frame 1)
 - `speed = 1.0` (moves down 1 row per frame)
 
 **Frame-by-Frame Visualization:**
 
 ```
-Frame 1: pos=5.0
+Frame 1: pos=0.0 (INITIALIZATION - Column starts at top)
 Terminal (showing column X=10 only):
-Row 3:  'A'  ← chars[0] (top of trail - dimmest)
-Row 4:  'B'  ← chars[1] (middle - brighter)
-Row 5:  'C'  ← chars[2] (HEAD/bottom - brightest WHITE+BOLD) ← pos is HERE
+Row 0:  'C'  ← chars[2] (HEAD/bottom - brightest WHITE+BOLD) ← pos is HERE
+Row -1: 'B'  ← chars[1] (above screen, not visible)
+Row -2: 'A'  ← chars[0] (above screen, not visible)
 
-Frame 2: pos=6.0 (moved down by speed=1.0)
-Terminal:
-Row 4:  'A'  ← chars[0] (top - dimmer)
-Row 5:  'B'  ← chars[1] (middle)
-Row 6:  'C'  ← chars[2] (HEAD - brightest) ← pos is HERE
+Wait, that's wrong. Let me recalculate...
+Actually: pos=0, trail=3, so:
+  chars[0] at row: 0 - (3-1) = -2 (above screen)
+  chars[1] at row: 0 - (3-2) = -1 (above screen)
+  chars[2] at row: 0 - (3-3) = 0 (at row 0)
 
-Frame 3: pos=7.0
+Frame 2: pos=1.0 (moved down by speed=1.0)
 Terminal:
-Row 5:  'A'  ← chars[0]
-Row 6:  'B'  ← chars[1]
-Row 7:  'C'  ← chars[2] (HEAD) ← pos is HERE
+Row -1: 'A'  ← chars[0] (still above screen)
+Row 0:  'B'  ← chars[1] (now at top - dimmer)
+Row 1:  'C'  ← chars[2] (HEAD - brightest) ← pos is HERE
 
-Frame 4: pos=8.0
+Frame 3: pos=2.0
 Terminal:
-Row 6:  'A'
-Row 7:  'B'
-Row 8:  'C'  ← pos is HERE
+Row 0:  'A'  ← chars[0] (now at top)
+Row 1:  'B'  ← chars[1] (middle)
+Row 2:  'C'  ← chars[2] (HEAD - brightest) ← pos is HERE
+
+Frame 4: pos=3.0
+Terminal:
+Row 1:  'A'  ← chars[0]
+Row 2:  'B'  ← chars[1]
+Row 3:  'C'  ← chars[2] (HEAD) ← pos is HERE
+
+Frame 5: pos=4.0
+Terminal:
+Row 2:  'A'
+Row 3:  'B'
+Row 4:  'C'  ← pos is HERE
 ```
 
 **Key Understanding:**
@@ -287,38 +299,54 @@ Frame 3: pos=16 → Row 14:'X', Row 15:'Y', Row 16:'Z' (moved 3 rows!)
 
 #### Summary: All 4 Variables Together
 
-**Complete state for one column at X=20:**
+**Column Lifecycle Starting from Frame 1:**
 ```python
-column at X=20:
-  trail = 5
-  chars = "Q#7mK"
-  pos   = 12.0
-  speed = 2.5
-```
+Column at X=20, chars="Q#7mK", trail=5, speed=2.5
 
-**What renders on terminal:**
-```
-Column 20:
-Row 8:  'Q'  chars[0] (dim)        ← calculated: pos - (trail-1) = 12-4 = 8
-Row 9:  '#'  chars[1] (dim)        ← calculated: pos - 3 = 9
-Row 10: '7'  chars[2] (normal)     ← calculated: pos - 2 = 10
-Row 11: 'm'  chars[3] (BOLD)       ← calculated: pos - 1 = 11
-Row 12: 'K'  chars[4] (WHITE+BOLD) ← pos points here (HEAD)
-```
+Frame 1: pos=0.0 (INITIALIZATION - Column starts at top)
+  chars[0]='Q' at row: 0 - (5-1-0) = -4 (above screen)
+  chars[1]='#' at row: 0 - (5-1-1) = -3 (above screen)
+  chars[2]='7' at row: 0 - (5-1-2) = -2 (above screen)
+  chars[3]='m' at row: 0 - (5-1-3) = -1 (above screen)
+  chars[4]='K' at row: 0 - (5-1-4) = 0  (HEAD at row 0, just appearing)
 
-**Next frame (pos moves by speed):**
-```python
-pos = 12.0 + 2.5 = 14.5  # Moved down 2.5 rows
-```
+Frame 2: pos=2.5 (moved down by speed=2.5)
+  chars[0]='Q' at row: 2.5 - 4 = -1.5 (rounding to -2, still above)
+  chars[1]='#' at row: 2.5 - 3 = -0.5 (rounding to -1, still above)
+  chars[2]='7' at row: 2.5 - 2 = 0.5  (rounding to 0)
+  chars[3]='m' at row: 2.5 - 1 = 1.5  (rounding to 1)
+  chars[4]='K' at row: 2.5 - 0 = 2.5  (rounding to 2, HEAD at row 2)
 
-**New rendering:**
-```
-Column 20:
-Row 10: 'Q'  ← now at 14.5 - 4 = 10.5 → rounded to 10
-Row 11: '#'  
-Row 12: '7'  
-Row 13: 'm'  
-Row 14: 'K'  ← HEAD now at row 14 (pos=14.5 → rounded to 14)
+Frame 3: pos=5.0 (moved down 2.5 more)
+  chars[0]='Q' at row: 5 - 4 = 1
+  chars[1]='#' at row: 5 - 3 = 2
+  chars[2]='7' at row: 5 - 2 = 3
+  chars[3]='m' at row: 5 - 1 = 4
+  chars[4]='K' at row: 5 - 0 = 5  (HEAD, brightest)
+
+Screen View at Frame 3:
+  Row 1: 'Q'  (dim - tail)
+  Row 2: '#'  (dim)
+  Row 3: '7'  (normal)
+  Row 4: 'm'  (BOLD - top 1/3)
+  Row 5: 'K'  (WHITE+BOLD - HEAD, brightest)
+
+Frame 4: pos=7.5
+  Row 3: 'Q'
+  Row 4: '#'
+  Row 5: '7'
+  Row 6: 'm'
+  Row 7: 'K'  (HEAD)
+
+... continues until head goes off-screen ...
+
+Frame N: pos=max_rows + trail + 2 (completely off-screen)
+         Column RESET:
+         pos = 0.0  (back to top)
+         chars = "new random string"
+         trail = random new value
+         speed = random new value
+         [Cycle repeats from Frame 1 of this new string]
 ```
 
 ---
@@ -525,12 +553,14 @@ if paused and initialized:
 ```python
 while len(columns) < max_cols:
     column = columns.append_new()           # Create new MatrixColumn struct
-    column.pos = float(random.randint(...)) # Initial position
+    column.pos = 0.0                        # All columns start at top (row 0)
     column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
     column.trail = int(random.randint(5, 20))
     column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
 ```
 - Ensures one column per terminal column
+- **Synchronized start:** All columns begin at top row (0) on first frame
+- **Asynchronous falling:** Different speeds and trail lengths create visual variation
 - VectorProxy `append_new()` creates C++ struct instances
 - Direct field assignment via proxy
 
@@ -553,15 +583,16 @@ for index in range(visible_cols):
 **5. Reset Off-Screen Columns**
 ```python
 if column.pos > max_rows + column.trail:
-    # Column completely off-screen, recycle it
-    column.pos = float(random.randint(-column.trail * 2, 0))  # Start above screen
+    # Column completely off-screen, recycle it back to top
+    column.pos = 0.0                       # Reset to row 0 (top of screen)
     column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
     column.trail = int(random.randint(5, 20))
     column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
 ```
-- Detects when column head passes bottom edge
-- Resets to random position above screen (negative Y)
+- Detects when column head passes bottom edge of screen
+- Resets to top (row 0) for clean visual cycle
 - Randomizes speed, trail length, and characters for variety
+- New string immediately starts falling from top
 
 **6. Character Mutation (Optional)**
 ```python

@@ -76,8 +76,9 @@ def update_values():
     while len(columns) < max_cols:
         column = columns.append_new()  # Creates C++ MatrixColumn struct
 
-        # Initialize position: start partially visible (25% to 100% down screen)
-        column.pos = float(random.randint(max_rows // 4, max_rows))
+        # Initialize position: all columns start at top of screen (row 0)
+        # Synchronized beginning - randomness comes from speed and trail differences
+        column.pos = 0.0
 
         # Random speed in range 2.0-4.0, scaled by keyboard control multiplier
         column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
@@ -109,8 +110,9 @@ def update_values():
         # When head passes bottom edge, recycle column from top
         # -----------------------------------------------------------------------
         if column.pos > max_rows + column.trail:
-            # Start above screen (negative Y) for smooth entry
-            column.pos = float(random.randint(-column.trail * 2, 0))
+            # Reset column to top of screen (row 0)
+            # New string starts from top, then falls at its own speed
+            column.pos = 0.0
 
             # Randomize speed with current multiplier
             column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
