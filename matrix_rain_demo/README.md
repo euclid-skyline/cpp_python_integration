@@ -320,8 +320,78 @@ Row 12: '7'
 Row 13: 'm'  
 Row 14: 'K'  ← HEAD now at row 14 (pos=14.5 → rounded to 14)
 ```
-         [Column moved down 1.5 rows again]
+
+---
+
+#### Why `pos` and `speed` are Floats (Not Integers)
+
+**Question:** Why use floats for `pos` and `speed` when screen rows are integers?
+
+**Answer:** Floats enable **fractional speeds** and **smooth motion** with precise accumulation.
+
+**Why `speed` is a float:**
+- Allows fine-grained speeds like 0.5, 1.5, 2.5 rows per frame (not just 1, 2, 3)
+- Provides smooth speed variation between columns
+- Example: speed=2.5 gives perfect in-between motion (not too slow at 2, not too fast at 3)
+
+**Why `pos` is a float:**
+- Accumulates fractional movement without rounding errors
+- Example showing the problem with integers:
+  ```python
+  # ❌ BAD: If pos were an integer with speed=2.5:
+  Frame 1: pos = 5
+  Frame 2: pos = 5 + int(2.5) = 5 + 2 = 7   # Lost the 0.5!
+  Frame 3: pos = 7 + int(2.5) = 7 + 2 = 9   # Should be 10.0
+  Frame 4: pos = 9 + int(2.5) = 9 + 2 = 11  # Should be 12.5
+  # Result: Average speed = 2.0 rows/frame (NOT 2.5!)
+  
+  # ✅ GOOD: With pos as float:
+  Frame 1: pos = 5.0
+  Frame 2: pos = 5.0 + 2.5 = 7.5   # Keeps the 0.5
+  Frame 3: pos = 7.5 + 2.5 = 10.0  # Correct!
+  Frame 4: pos = 10.0 + 2.5 = 12.5 # Correct!
+  # Result: Average speed = 2.5 rows/frame ✓
+  ```
+
+**When does float→int conversion happen?**
+
+Only during rendering in C++:
+```cpp
+// In render_matrix_rain():
+int y = static_cast<int>(column.pos) - (column.trail - 1 - i);
+//      ^^^^^^^^^^^^^^^^^^^^^^
+//      Float → Int conversion happens HERE
+
+mvaddch(y, x, chars[i]);  // Terminal requires integer row
+//      ^
+//      Now it's an integer for drawing
 ```
+
+**Visual comparison:**
+```
+Float pos (smooth, accurate):
+Frame 1: pos=5.0  → draws at row 5
+Frame 2: pos=7.5  → draws at row 7  (truncated from 7.5)
+Frame 3: pos=10.0 → draws at row 10
+Frame 4: pos=12.5 → draws at row 12 (truncated from 12.5)
+Frame 5: pos=15.0 → draws at row 15
+Distance: 15-5 = 10 rows in 4 frames = 2.5 rows/frame ✓
+
+Integer pos (jerky, drift):
+Frame 1: pos=5   → draws at row 5
+Frame 2: pos=7   → draws at row 7  (lost 0.5)
+Frame 3: pos=9   → draws at row 9  (lost 1.0 total)
+Frame 4: pos=11  → draws at row 11 (lost 1.5 total)
+Frame 5: pos=13  → draws at row 13 (lost 2.0 total)
+Distance: 13-5 = 8 rows in 4 frames = 2.0 rows/frame ✗
+```
+
+**Summary:**
+- Floats store **precise internal state** (5.0, 7.5, 10.0, 12.5)
+- Integers used **only for terminal drawing** (5, 7, 10, 12)
+- This ensures mathematically accurate animation without drift
+
+---
 
 **All 4 Variables Impact Visual Effect:**
 - `pos` determines Y-position (vertical location)
@@ -391,6 +461,9 @@ int trail = column.trail;                     // Trail length
 const std::string &chars = column.chars;     // Character sequence
 ```
 - `pos`: Y-coordinate of the trail head (bottom of visible trail)
+  - **Float→Int conversion:** `column.pos` is stored as `float` (e.g., 7.5) for smooth fractional movement
+  - `static_cast<int>()` truncates to integer (7.5 → 7) for terminal row coordinate
+  - This happens **only during rendering**, preserving precision in stored state
 - `trail`: Number of characters in this column's trail (5-20)
 - `chars`: String of random characters to display (length matches trail)
 
@@ -470,6 +543,11 @@ for index in range(visible_cols):
     column.pos = float(column.pos + column.speed)
 ```
 - Mutates `pos` field to move column downward
+- **Fractional movement:** `speed` values like 2.5 enable smooth sub-pixel motion
+  - Example: pos starts at 5.0, speed is 2.5
+  - Frame 1: 5.0 + 2.5 = 7.5 (column moves 2.5 rows)
+  - Frame 2: 7.5 + 2.5 = 10.0 (precise accumulation, no rounding error)
+  - Frame 3: 10.0 + 2.5 = 12.5 (continuous fluid motion)
 - Speed multiplied by `speed_multiplier` (keyboard +/- controls)
 
 **5. Reset Off-Screen Columns**
