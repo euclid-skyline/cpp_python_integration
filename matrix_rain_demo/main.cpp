@@ -268,13 +268,14 @@ int main()
                           << "\n";
             }
 
-            // Draw each column independently
+            // C++ RENDER: Read animation state from Python-updated MatrixColumn structs
+            // Each column has pos (head position), speed, trail (length), and chars (character string)
             for (size_t x = 0; x < matrix_columns.size() && x < static_cast<size_t>(max_cols); ++x)
             {
                 const auto &column = matrix_columns[x];
-                int pos = static_cast<int>(column.pos);
-                int trail = column.trail;
-                const std::string &chars = column.chars;
+                int pos = static_cast<int>(column.pos);  // Read head position (updated by Python)
+                int trail = column.trail;                // Read trail length
+                const std::string &chars = column.chars; // Read character sequence
 
                 int color_index = (x % total_colors) + 1;
                 attron(COLOR_PAIR(color_index));
@@ -285,14 +286,32 @@ int main()
                     int y = pos - (trail - 1 - i); // trail flows downward from pos
                     if (y >= 0 && y < max_rows)
                     {
-                        // Brightest at head (bottom of trail), dimmer upward
+                        // Create brightness gradient: head (i=trail-1) is brightest
                         if (i == trail - 1)
-                            attron(A_BOLD); // Head of trail is brightest
+                        {
+                            // Very head: white + bold for maximum brightness
+                            attron(COLOR_PAIR(6)); // White
+                            attron(A_BOLD);
+                        }
+                        else if (i >= trail - trail / 3)
+                        {
+                            // Top third of trail: bold color for bright shine
+                            attron(A_BOLD);
+                        }
 
                         mvaddch(y, static_cast<int>(x), chars[i]);
 
+                        // Reset brightness attributes
                         if (i == trail - 1)
+                        {
                             attroff(A_BOLD);
+                            attroff(COLOR_PAIR(6));
+                            attron(COLOR_PAIR(color_index)); // Restore column color
+                        }
+                        else if (i >= trail - trail / 3)
+                        {
+                            attroff(A_BOLD);
+                        }
                     }
                 }
 
@@ -320,7 +339,7 @@ int main()
 
         std::this_thread::sleep_for(std::chrono::microseconds(16667 / 2)); // ~30 FPS
         // std::this_thread::sleep_for(std::chrono::microseconds(16667*2)); // ~120 FPS
-        //std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
     }
 
     // ---------------------------------------------------------

@@ -46,20 +46,23 @@ def update_values():
 
     initialized = True
 
-    # Update visible columns; ignore extras on terminal shrink
+    # PYTHON UPDATE: Update animation state in MatrixColumn structs bound to C++
+    # C++ will read these fields (pos, speed, trail, chars) to render each frame
     visible_cols = min(len(columns), max_cols)
     for index in range(visible_cols):
         column = columns[index]
 
-        # Move down
+        # Move column down by adding speed to position
         column.pos = float(column.pos + column.speed)
 
-        # Reset if completely off-screen
+        # Reset column when it goes completely off-screen (recycle for continuous rain)
         if column.pos > max_rows + column.trail:
-            column.pos = float(random.randint(-column.trail * 2, 0))
-            column.speed = float(random.uniform(2.0, 4.0))
-            column.trail = int(random.randint(5, 20))
-            column.chars = "".join(
+            column.pos = float(
+                random.randint(-column.trail * 2, 0)
+            )  # Start above screen
+            column.speed = float(random.uniform(2.0, 4.0))  # Randomize fall speed
+            column.trail = int(random.randint(5, 20))  # Randomize trail length
+            column.chars = "".join(  # Generate new character sequence
                 random.choice(MATRIX_CHARS) for _ in range(column.trail)
             )
 
