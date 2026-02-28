@@ -80,6 +80,256 @@ The Matrix rain demo demonstrates a **split-responsibility design**:
 - Resets off-screen columns for continuous rain effect
 - No return values needed - works by side effects on bound data
 
+### Animation State Variables
+
+The Matrix rain animation works by managing a **column** for each X position on the terminal. Each column in the `matrix_columns` vector is a `MatrixColumn` struct with 4 state variables.
+
+Let me explain with a concrete example first, then detail each variable:
+
+---
+
+#### Complete Example: One Column Falling Down Screen
+
+**Setup:**
+- Column at X=10 (horizontal position, 10th character from left)
+- `chars = "ABC"` (3-character string)
+- `trail = 3` (length of chars string)
+- `pos = 5.0` (Y position - this is the HEAD/BOTTOM character position)
+- `speed = 1.0` (moves down 1 row per frame)
+
+**Frame-by-Frame Visualization:**
+
+```
+Frame 1: pos=5.0
+Terminal (showing column X=10 only):
+Row 3:  'A'  ← chars[0] (top of trail - dimmest)
+Row 4:  'B'  ← chars[1] (middle - brighter)
+Row 5:  'C'  ← chars[2] (HEAD/bottom - brightest WHITE+BOLD) ← pos is HERE
+
+Frame 2: pos=6.0 (moved down by speed=1.0)
+Terminal:
+Row 4:  'A'  ← chars[0] (top - dimmer)
+Row 5:  'B'  ← chars[1] (middle)
+Row 6:  'C'  ← chars[2] (HEAD - brightest) ← pos is HERE
+
+Frame 3: pos=7.0
+Terminal:
+Row 5:  'A'  ← chars[0]
+Row 6:  'B'  ← chars[1]
+Row 7:  'C'  ← chars[2] (HEAD) ← pos is HERE
+
+Frame 4: pos=8.0
+Terminal:
+Row 6:  'A'
+Row 7:  'B'
+Row 8:  'C'  ← pos is HERE
+```
+
+**Key Understanding:**
+- `pos` points to the **LAST character** in the string (chars[trail-1])
+- This is the **HEAD** (bottom) of the trail - the brightest character
+- The trail extends **UPWARD** from pos
+- chars[0] is at the **TOP** (pos - trail + 1)
+- chars[trail-1] is at the **BOTTOM** (pos)
+
+---
+
+#### Now Let's Detail Each Variable:
+
+#### 1. **`trail`** (int) - How Many Characters to Show
+
+**What it is:**
+- A simple integer count: 5, 10, 15, 20, etc.
+- Defines HOW MANY characters are visible in this falling column
+
+**How Python selects it:**
+```python
+# When initializing or resetting a column:
+column.trail = int(random.randint(5, 20))  # Random between 5 and 20
+```
+
+**What it controls on screen:**
+```
+trail=3  →  Shows 3 characters vertically
+trail=8  →  Shows 8 characters vertically  
+trail=15 →  Shows 15 characters vertically
+```
+
+**Example comparison:**
+```
+Column with trail=3:          Column with trail=7:
+Row 5: 'X'  ← top             Row 8:  'Q'  ← top
+Row 6: 'Y'                    Row 9:  'W'
+Row 7: 'Z'  ← head (pos)      Row 10: 'E'
+                              Row 11: 'R'
+                              Row 12: 'T'
+                              Row 13: 'Y'
+                              Row 14: 'U'  ← head (pos)
+```
+
+---
+
+#### 2. **`chars`** (string) - What Characters to Display
+
+**What it is:**
+- A string containing exactly `trail` number of characters
+- Example: if trail=5, chars might be "K7$pQ"
+
+**How Python generates it:**
+```python
+# Character pool to choose from:
+MATRIX_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~"
+
+# When initializing or resetting:
+column.trail = int(random.randint(5, 20))  # First pick trail length
+column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
+# This creates a string with EXACTLY trail characters
+```
+
+**Example generation:**
+```python
+trail = 5
+chars = "K7$pQ"  # Random 5 characters from pool
+# Length check: len(chars) == trail → len("K7$pQ") == 5 ✓
+
+trail = 10  
+chars = "aB3#xZ9!mP"  # Random 10 characters
+# Length check: len(chars) == trail → len("aB3#xZ9!mP") == 10 ✓
+```
+
+**How it displays on screen:**
+```
+chars = "K7$pQ" (length 5)
+chars[0] = 'K'  →  Displays at TOP of trail (row: pos-4)
+chars[1] = '7'  →  Displays at row: pos-3
+chars[2] = '$'  →  Displays at row: pos-2
+chars[3] = 'p'  →  Displays at row: pos-1
+chars[4] = 'Q'  →  Displays at BOTTOM/HEAD (row: pos) ← This is the brightest
+```
+
+---
+
+#### 3. **`pos`** (float) - Position of the HEAD (Last Character)
+
+**CRITICAL:** `pos` is the Y-coordinate (row number) of the **LAST** character in the string!
+
+**Formula:** 
+- chars[0] appears at row: `pos - trail + 1` (TOP of trail)
+- chars[1] appears at row: `pos - trail + 2`
+- chars[2] appears at row: `pos - trail + 3`  
+- ...
+- chars[trail-1] appears at row: `pos` (BOTTOM/HEAD)
+
+**Detailed Example with chars="MATRIX" at column X=15:**
+
+```
+Given: chars="MATRIX", trail=6, pos=10.0, column X=15
+
+Rendering calculation for each character:
+chars[0]='M': y = pos - (trail-1-0) = 10 - 5 = 5  → Row 5, Col 15: 'M'
+chars[1]='A': y = pos - (trail-1-1) = 10 - 4 = 6  → Row 6, Col 15: 'A'
+chars[2]='T': y = pos - (trail-1-2) = 10 - 3 = 7  → Row 7, Col 15: 'T'
+chars[3]='R': y = pos - (trail-1-3) = 10 - 2 = 8  → Row 8, Col 15: 'R'
+chars[4]='I': y = pos - (trail-1-4) = 10 - 1 = 9  → Row 9, Col 15: 'I'
+chars[5]='X': y = pos - (trail-1-5) = 10 - 0 = 10 → Row 10, Col 15: 'X' ← HEAD
+
+Terminal view (column 15):
+Row 5:  M  (dim)
+Row 6:  A  (dim)
+Row 7:  T  (normal)
+Row 8:  R  (BOLD - top 1/3 of trail)
+Row 9:  I  (BOLD)
+Row 10: X  (WHITE+BOLD - HEAD) ← pos points HERE
+```
+
+**How Python updates pos:**
+```python
+# Each frame:
+column.pos = float(column.pos + column.speed)
+
+# Example with speed=2.0:
+Frame 1: pos = 5.0
+Frame 2: pos = 5.0 + 2.0 = 7.0   (entire trail moved down 2 rows)
+Frame 3: pos = 7.0 + 2.0 = 9.0   (moved down 2 more rows)
+Frame 4: pos = 9.0 + 2.0 = 11.0  (and so on...)
+```
+
+---
+
+#### 4. **`speed`** (float) - How Fast to Move Down
+
+**What it is:**
+- Number of rows per frame to move downward
+- Example: speed=1.0 means move 1 row per frame, speed=2.5 means 2.5 rows per frame
+
+**How Python selects it:**
+```python
+# When initializing or resetting:
+speed_multiplier = cpp.speed_multiplier  # From keyboard +/- keys (default 1.0)
+column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
+# Random between 2.0-4.0, then scaled by keyboard multiplier
+```
+
+**Example with chars="XYZ" at column X=5:**
+```
+Speed 1.0 (slow):
+Frame 1: pos=10 → Row 8:'X', Row 9:'Y', Row 10:'Z'
+Frame 2: pos=11 → Row 9:'X', Row 10:'Y', Row 11:'Z'  (moved 1 row)
+Frame 3: pos=12 → Row 10:'X', Row 11:'Y', Row 12:'Z' (moved 1 row)
+
+Speed 3.0 (fast):
+Frame 1: pos=10 → Row 8:'X', Row 9:'Y', Row 10:'Z'
+Frame 2: pos=13 → Row 11:'X', Row 12:'Y', Row 13:'Z' (moved 3 rows!)
+Frame 3: pos=16 → Row 14:'X', Row 15:'Y', Row 16:'Z' (moved 3 rows!)
+```
+
+---
+
+#### Summary: All 4 Variables Together
+
+**Complete state for one column at X=20:**
+```python
+column at X=20:
+  trail = 5
+  chars = "Q#7mK"
+  pos   = 12.0
+  speed = 2.5
+```
+
+**What renders on terminal:**
+```
+Column 20:
+Row 8:  'Q'  chars[0] (dim)        ← calculated: pos - (trail-1) = 12-4 = 8
+Row 9:  '#'  chars[1] (dim)        ← calculated: pos - 3 = 9
+Row 10: '7'  chars[2] (normal)     ← calculated: pos - 2 = 10
+Row 11: 'm'  chars[3] (BOLD)       ← calculated: pos - 1 = 11
+Row 12: 'K'  chars[4] (WHITE+BOLD) ← pos points here (HEAD)
+```
+
+**Next frame (pos moves by speed):**
+```python
+pos = 12.0 + 2.5 = 14.5  # Moved down 2.5 rows
+```
+
+**New rendering:**
+```
+Column 20:
+Row 10: 'Q'  ← now at 14.5 - 4 = 10.5 → rounded to 10
+Row 11: '#'  
+Row 12: '7'  
+Row 13: 'm'  
+Row 14: 'K'  ← HEAD now at row 14 (pos=14.5 → rounded to 14)
+```
+         [Column moved down 1.5 rows again]
+```
+
+**All 4 Variables Impact Visual Effect:**
+- `pos` determines Y-position (vertical location)
+- `speed` determines how fast it falls
+- `trail` determines how many characters visible
+- `chars` determines what characters appear
+- All work together to create smooth, continuous animation
+
 ### Data Flow
 
 ```mermaid
