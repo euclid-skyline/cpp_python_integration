@@ -40,7 +40,7 @@ def update_values():
     while len(columns) < max_cols:
         column = columns.append_new()
         column.pos = float(random.randint(max_rows // 4, max_rows))
-        column.speed = float(random.uniform(0.1, 0.5))
+        column.speed = float(random.uniform(2.0, 4.0))
         column.trail = int(random.randint(5, 20))
         column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
 
@@ -57,7 +57,7 @@ def update_values():
         # Reset if completely off-screen
         if column.pos > max_rows + column.trail:
             column.pos = float(random.randint(-column.trail * 2, 0))
-            column.speed = float(random.uniform(0.1, 0.5))
+            column.speed = float(random.uniform(2.0, 4.0))
             column.trail = int(random.randint(5, 20))
             column.chars = "".join(
                 random.choice(MATRIX_CHARS) for _ in range(column.trail)
