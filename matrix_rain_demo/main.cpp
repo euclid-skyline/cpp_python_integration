@@ -289,7 +289,7 @@ int main()
                         if (i == trail - 1)
                             attron(A_BOLD); // Head of trail is brightest
 
-                        mvaddch(y, x, chars[i]);
+                        mvaddch(y, static_cast<int>(x), chars[i]);
 
                         if (i == trail - 1)
                             attroff(A_BOLD);
