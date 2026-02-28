@@ -2,6 +2,12 @@ import cpp
 import random
 import sys
 
+# Keyboard Controls:
+# P - Pause/Resume animation
+# + - Increase speed (max 3.0x)
+# - - Decrease speed (min 0.1x)
+# R - Reset animation (clear all columns)
+
 # Matrix characters pool
 MATRIX_CHARS = (
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -21,9 +27,15 @@ def update_values():
     try:
         max_cols = cpp.max_cols
         max_rows = cpp.max_rows
+        paused = cpp.paused
+        speed_multiplier = cpp.speed_multiplier
     except AttributeError as e:
         sys.stderr.write(f"ERROR: Cannot access cpp variables: {e}\n")
         sys.stderr.flush()
+        return
+
+    # If paused, skip animation updates (but still allow initialization)
+    if paused and initialized:
         return
 
     # Debug output on first frame
@@ -40,7 +52,7 @@ def update_values():
     while len(columns) < max_cols:
         column = columns.append_new()
         column.pos = float(random.randint(max_rows // 4, max_rows))
-        column.speed = float(random.uniform(2.0, 4.0))
+        column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
         column.trail = int(random.randint(5, 20))
         column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
 
@@ -52,7 +64,7 @@ def update_values():
     for index in range(visible_cols):
         column = columns[index]
 
-        # Move column down by adding speed to position
+        # Move column down by adding speed to position (adjusted by speed_multiplier)
         column.pos = float(column.pos + column.speed)
 
         # Reset column when it goes completely off-screen (recycle for continuous rain)
@@ -60,7 +72,9 @@ def update_values():
             column.pos = float(
                 random.randint(-column.trail * 2, 0)
             )  # Start above screen
-            column.speed = float(random.uniform(2.0, 4.0))  # Randomize fall speed
+            column.speed = float(
+                random.uniform(2.0, 4.0) * speed_multiplier
+            )  # Randomize fall speed with multiplier
             column.trail = int(random.randint(5, 20))  # Randomize trail length
             column.chars = "".join(  # Generate new character sequence
                 random.choice(MATRIX_CHARS) for _ in range(column.trail)

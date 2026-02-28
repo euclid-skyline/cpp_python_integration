@@ -22,12 +22,58 @@
 #include "cpp_module.hpp"
 
 #include "matrix_rain_animation_data.hpp" // Struct & Vector metadata for Matrix rain
+#include "reflection_value.hpp"           // ByteBool, TRUE_BYTE, FALSE_BYTE
 
 void dump_sys_path();
 
 // Render matrix rain animation to terminal
 void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors);
+
+// Global flag for clean shutdown
 static bool running = true;
+
+// Global keyboard control states
+static ByteBool paused = FALSE_BYTE;
+static float speed_multiplier = 1.0f;
+
+void handle_keyboard_input()
+{
+    int ch = getch();
+    if (ch == ERR)
+        return; // No key pressed
+
+    switch (ch)
+    {
+    case 'P':
+    case 'p':
+        paused = (paused == FALSE_BYTE) ? TRUE_BYTE : FALSE_BYTE;
+        std::cerr << (paused != FALSE_BYTE ? "\n[PAUSED]\n" : "\n[RESUMED]\n");
+        std::cerr.flush();
+        break;
+    case '+':
+    case '=':
+        speed_multiplier += 0.1f;
+        if (speed_multiplier > 3.0f)
+            speed_multiplier = 3.0f;
+        std::cerr << "\n[Speed: " << speed_multiplier << "x]\n";
+        std::cerr.flush();
+        break;
+    case '-':
+    case '_':
+        speed_multiplier -= 0.1f;
+        if (speed_multiplier < 0.1f)
+            speed_multiplier = 0.1f;
+        std::cerr << "\n[Speed: " << speed_multiplier << "x]\n";
+        std::cerr.flush();
+        break;
+    case 'R':
+    case 'r':
+        matrix_columns.clear();
+        std::cerr << "\n[RESET]\n";
+        std::cerr.flush();
+        break;
+    }
+}
 
 void signal_handler(int)
 {
@@ -231,6 +277,8 @@ int main()
     PyInterface::bind("columns", matrix_columns);
     PyInterface::bind("max_rows", max_rows);
     PyInterface::bind("max_cols", max_cols);
+    PyInterface::bind("paused", paused);
+    PyInterface::bind("speed_multiplier", speed_multiplier);
 
     // ----------------------------------------------------------
 
@@ -257,6 +305,9 @@ int main()
         if (result)
         {
             Py_DECREF(result);
+            // Check for keyboard input (pause, speed, reset)
+            handle_keyboard_input();
+
             // Always update curses internal size (detect terminal resize)
             resize_term(0, 0); // Let ncurses resize internal buffers
             getmaxyx(stdscr, max_rows, max_cols);
