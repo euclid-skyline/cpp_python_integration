@@ -2,8 +2,14 @@ import cpp
 
 
 def update_values():
+    # Example 0 - Access and modify a simple scalar variable
+    print("=== 0) Simple scalar: temp ===")
+    print("Temp value in C++:", cpp.temp)
+    cpp.temp = 99
+    print("Updated temp value in Python script:", cpp.temp)
+
     # Example 1 - Access and modify simple struct fields
-    print("=== 1) Simple struct: Player ===")
+    print("\n=== 1) Simple struct: Player ===")
     print("Player fields count in C++:", len(cpp.player))
     print("Player health in C++:", cpp.player.health)
     print("Player speed in C++:", cpp.player.speed)

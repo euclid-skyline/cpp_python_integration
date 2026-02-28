@@ -219,6 +219,9 @@ int main()
     // Bind C++ variables sections
     // ---------------------------------------------------------
 
+    // 0) Simple scalar
+    int temp = 42;
+    PyInterface::bind("temp", temp);
     // 1) Create an instance of Player
     Player player = {100, 5.5f};
     PyInterface::bind("player", player);
