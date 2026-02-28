@@ -25,7 +25,8 @@
 
 void dump_sys_path();
 
-// Global flag for clean shutdown
+// Render matrix rain animation to terminal
+void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors);
 static bool running = true;
 
 void signal_handler(int)
@@ -202,20 +203,22 @@ int main()
 
     initscr();             // start curses mode
     start_color();         // enable color if possible
-    use_default_colors();  // allow default terminal colors
     noecho();              // don't echo keypresses
     curs_set(0);           // hide cursor
     nodelay(stdscr, TRUE); // Make input non-blocking
     cbreak();              // Disable line buffering
 
-    // Initialize color pairs (foreground colors with default background)
+    // Initialize color pairs with BLACK background for solid look
     // Skip COLOR_BLACK (0)
-    init_pair(1, COLOR_GREEN, -1);
-    init_pair(2, COLOR_YELLOW, -1);
-    init_pair(3, COLOR_BLUE, -1);
-    init_pair(4, COLOR_MAGENTA, -1);
-    init_pair(5, COLOR_CYAN, -1);
-    init_pair(6, COLOR_WHITE, -1);
+    init_pair(1, COLOR_GREEN, COLOR_BLACK);
+    init_pair(2, COLOR_YELLOW, COLOR_BLACK);
+    init_pair(3, COLOR_BLUE, COLOR_BLACK);
+    init_pair(4, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(5, COLOR_CYAN, COLOR_BLACK);
+    init_pair(6, COLOR_WHITE, COLOR_BLACK);
+
+    // Set window background to black
+    bkgd(COLOR_PAIR(1) | ' '); // Black background with space character
 
     int total_colors = 6; // We only initialized 6 colors (1-6), so cycle through them
 
@@ -254,11 +257,11 @@ int main()
         if (result)
         {
             Py_DECREF(result);
-            // Always update curses internal size
+            // Always update curses internal size (detect terminal resize)
             resize_term(0, 0); // Let ncurses resize internal buffers
             getmaxyx(stdscr, max_rows, max_cols);
-            // Clear screen
-            erase();
+            // Clear screen and fill with black background
+            clear(); // Use clear() instead of erase() to fill with background color
 
             // Debug output on first frame and every 50 frames
             if (frame_count == 0 || frame_count % 50 == 0)
@@ -268,55 +271,8 @@ int main()
                           << "\n";
             }
 
-            // C++ RENDER: Read animation state from Python-updated MatrixColumn structs
-            // Each column has pos (head position), speed, trail (length), and chars (character string)
-            for (size_t x = 0; x < matrix_columns.size() && x < static_cast<size_t>(max_cols); ++x)
-            {
-                const auto &column = matrix_columns[x];
-                int pos = static_cast<int>(column.pos);  // Read head position (updated by Python)
-                int trail = column.trail;                // Read trail length
-                const std::string &chars = column.chars; // Read character sequence
-
-                int color_index = (x % total_colors) + 1;
-                attron(COLOR_PAIR(color_index));
-
-                // Draw the trail from top to bottom
-                for (int i = 0; i < trail && i < static_cast<int>(chars.size()); ++i)
-                {
-                    int y = pos - (trail - 1 - i); // trail flows downward from pos
-                    if (y >= 0 && y < max_rows)
-                    {
-                        // Create brightness gradient: head (i=trail-1) is brightest
-                        if (i == trail - 1)
-                        {
-                            // Very head: white + bold for maximum brightness
-                            attron(COLOR_PAIR(6)); // White
-                            attron(A_BOLD);
-                        }
-                        else if (i >= trail - trail / 3)
-                        {
-                            // Top third of trail: bold color for bright shine
-                            attron(A_BOLD);
-                        }
-
-                        mvaddch(y, static_cast<int>(x), chars[i]);
-
-                        // Reset brightness attributes
-                        if (i == trail - 1)
-                        {
-                            attroff(A_BOLD);
-                            attroff(COLOR_PAIR(6));
-                            attron(COLOR_PAIR(color_index)); // Restore column color
-                        }
-                        else if (i >= trail - trail / 3)
-                        {
-                            attroff(A_BOLD);
-                        }
-                    }
-                }
-
-                attroff(COLOR_PAIR(color_index));
-            }
+            // Render matrix rain animation
+            render_matrix_rain(matrix_columns, max_rows, max_cols, total_colors);
 
             refresh();
             frame_count++;
@@ -396,4 +352,56 @@ void dump_sys_path()
     std::cout << "----------------\n\n";
 
     Py_DECREF(path);
+}
+
+// C++ RENDER: Draw matrix rain columns with brightness gradient
+void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors)
+{
+    for (size_t x = 0; x < columns.size() && x < static_cast<size_t>(max_cols); ++x)
+    {
+        const auto &column = columns[x];
+        int pos = static_cast<int>(column.pos);  // Read head position (updated by Python)
+        int trail = column.trail;                // Read trail length
+        const std::string &chars = column.chars; // Read character sequence
+
+        int color_index = (x % total_colors) + 1;
+        attron(COLOR_PAIR(color_index));
+
+        // Draw the trail from top to bottom
+        for (int i = 0; i < trail && i < static_cast<int>(chars.size()); ++i)
+        {
+            int y = pos - (trail - 1 - i); // trail flows downward from pos
+            if (y >= 0 && y < max_rows)
+            {
+                // Create brightness gradient: head (i=trail-1) is brightest
+                if (i == trail - 1)
+                {
+                    // Very head: white + bold for maximum brightness
+                    attron(COLOR_PAIR(6)); // White
+                    attron(A_BOLD);
+                }
+                else if (i >= trail - trail / 3)
+                {
+                    // Top third of trail: bold color for bright shine
+                    attron(A_BOLD);
+                }
+
+                mvaddch(y, static_cast<int>(x), chars[i]);
+
+                // Reset brightness attributes
+                if (i == trail - 1)
+                {
+                    attroff(A_BOLD);
+                    attroff(COLOR_PAIR(6));
+                    attron(COLOR_PAIR(color_index)); // Restore column color
+                }
+                else if (i >= trail - trail / 3)
+                {
+                    attroff(A_BOLD);
+                }
+            }
+        }
+
+        attroff(COLOR_PAIR(color_index));
+    }
 }
