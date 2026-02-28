@@ -318,8 +318,9 @@ int main()
             break;
         }
 
-        // std::this_thread::sleep_for(std::chrono::microseconds(16667)); // ~60 FPS
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
+        std::this_thread::sleep_for(std::chrono::microseconds(16667 / 2)); // ~30 FPS
+        // std::this_thread::sleep_for(std::chrono::microseconds(16667*2)); // ~120 FPS
+        //std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 10 FPS for easier testing
     }
 
     // ---------------------------------------------------------
