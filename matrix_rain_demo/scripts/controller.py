@@ -127,7 +127,7 @@ def update_values():
 
         # -----------------------------------------------------------------------
         # STEP 7: Optional character mutation (glitch effect)
-        # 20% chance per frame to change the HEAD character at column.pos
+        # 30% chance per frame to change the HEAD character at column.pos
         # (head is chars[trail - 1], the brightest glyph on screen)
         # -----------------------------------------------------------------------
         if random.random() < 0.3 and column.trail > 0:
