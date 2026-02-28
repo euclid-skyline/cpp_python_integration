@@ -19,24 +19,42 @@ MATRIX_CHARS = (
 initialized = False
 frame_count = 0
 
+# ========================================================================
+# PYTHON ANIMATION CONTROLLER
+# ========================================================================
+# This function is called by C++ every frame (~30 FPS) to update animation state.
+# It mutates C++ bound data structures directly via proxy interfaces.
+# No return value needed - works entirely through side effects on cpp.* variables.
+# ========================================================================
+
 
 def update_values():
+    """Update matrix rain animation state by mutating C++ bound structures.
+
+    Called by C++ main loop each frame. Reads terminal dimensions and control
+    states, then mutates the matrix_columns vector to animate falling characters.
+    """
     global initialized, frame_count
     frame_count += 1
 
+    # -----------------------------------------------------------------------
+    # STEP 1: Read C++ bound variables (terminal state and control flags)
+    # -----------------------------------------------------------------------
     try:
-        max_cols = cpp.max_cols
-        max_rows = cpp.max_rows
-        paused = cpp.paused
-        speed_multiplier = cpp.speed_multiplier
+        max_cols = cpp.max_cols  # Terminal width (columns)
+        max_rows = cpp.max_rows  # Terminal height (rows)
+        paused = cpp.paused  # Pause state (keyboard P)
+        speed_multiplier = cpp.speed_multiplier  # Speed adjustment (keyboard +/-)
     except AttributeError as e:
         sys.stderr.write(f"ERROR: Cannot access cpp variables: {e}\n")
         sys.stderr.flush()
         return
 
-    # If paused, skip animation updates (but still allow initialization)
+    # -----------------------------------------------------------------------
+    # STEP 2: Handle pause - skip updates but keep rendering
+    # -----------------------------------------------------------------------
     if paused and initialized:
-        return
+        return  # Early exit - C++ continues rendering frozen state
 
     # Debug output on first frame
     if frame_count == 1:
@@ -45,57 +63,92 @@ def update_values():
         )
         sys.stderr.flush()
 
-    columns = cpp.columns
+    # -----------------------------------------------------------------------
+    # STEP 3: Get reference to C++ matrix_columns vector via proxy
+    # Direct mutations affect C++ memory - no copies or serialization
+    # -----------------------------------------------------------------------
+    columns = cpp.columns  # VectorProxy<MatrixColumn>
 
-    # Ensure we have at least one column state per screen column.
-    # VectorProxy supports append_new() for vectors of structs.
+    # -----------------------------------------------------------------------
+    # STEP 4: Initialize columns on first frame or after terminal width increase
+    # Creates one column per terminal column using VectorProxy.append_new()
+    # -----------------------------------------------------------------------
     while len(columns) < max_cols:
-        column = columns.append_new()
+        column = columns.append_new()  # Creates C++ MatrixColumn struct
+
+        # Initialize position: start partially visible (25% to 100% down screen)
         column.pos = float(random.randint(max_rows // 4, max_rows))
+
+        # Random speed in range 2.0-4.0, scaled by keyboard control multiplier
         column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
+
+        # Random trail length: 5-20 characters
         column.trail = int(random.randint(5, 20))
+
+        # Generate random character sequence matching trail length
         column.chars = "".join(random.choice(MATRIX_CHARS) for _ in range(column.trail))
 
     initialized = True
 
-    # PYTHON UPDATE: Update animation state in MatrixColumn structs bound to C++
-    # C++ will read these fields (pos, speed, trail, chars) to render each frame
+    # -----------------------------------------------------------------------
+    # STEP 5: Update each visible column (animate falling rain)
+    # Mutations directly affect C++ memory that renderer will read
+    # -----------------------------------------------------------------------
+    # Only update columns that fit on screen (ignore extras on resize shrink)
     visible_cols = min(len(columns), max_cols)
-    for index in range(visible_cols):
-        column = columns[index]
 
-        # Move column down by adding speed to position (adjusted by speed_multiplier)
+    for index in range(visible_cols):
+        column = columns[index]  # StructProxy<MatrixColumn>
+
+        # Move column down by speed (pixels per frame)
+        # Speed already includes keyboard multiplier from initialization
         column.pos = float(column.pos + column.speed)
 
-        # Reset column when it goes completely off-screen (recycle for continuous rain)
+        # -----------------------------------------------------------------------
+        # STEP 6: Reset off-screen columns (continuous rain effect)
+        # When head passes bottom edge, recycle column from top
+        # -----------------------------------------------------------------------
         if column.pos > max_rows + column.trail:
-            column.pos = float(
-                random.randint(-column.trail * 2, 0)
-            )  # Start above screen
-            column.speed = float(
-                random.uniform(2.0, 4.0) * speed_multiplier
-            )  # Randomize fall speed with multiplier
-            column.trail = int(random.randint(5, 20))  # Randomize trail length
-            column.chars = "".join(  # Generate new character sequence
+            # Start above screen (negative Y) for smooth entry
+            column.pos = float(random.randint(-column.trail * 2, 0))
+
+            # Randomize speed with current multiplier
+            column.speed = float(random.uniform(2.0, 4.0) * speed_multiplier)
+
+            # Randomize trail length for variety
+            column.trail = int(random.randint(5, 20))
+
+            # Generate new character sequence
+            column.chars = "".join(
                 random.choice(MATRIX_CHARS) for _ in range(column.trail)
             )
 
-        # Occasionally randomize a character in the trail
+        # -----------------------------------------------------------------------
+        # STEP 7: Optional character mutation (glitch effect)
+        # 10% chance per frame to randomly change one character in the trail
+        # Creates dynamic "digital rain" appearance
+        # -----------------------------------------------------------------------
         if random.random() < 0.1 and column.trail > 0:
             chars = column.chars
-            # Keep chars length aligned with trail length
+
+            # Ensure chars string matches trail length (safety check)
             if len(chars) != column.trail:
                 chars = "".join(
                     random.choice(MATRIX_CHARS) for _ in range(column.trail)
                 )
+
+            # Pick random position in trail and replace with new character
             mutation_index = random.randint(0, column.trail - 1)
             chars = (
                 chars[:mutation_index]
                 + random.choice(MATRIX_CHARS)
                 + chars[mutation_index + 1 :]
             )
-            column.chars = chars
+            column.chars = chars  # Mutate C++ string
 
+    # -----------------------------------------------------------------------
+    # Debug output every 50 frames to monitor performance
+    # -----------------------------------------------------------------------
     if frame_count % 50 == 0:
         sys.stderr.write(
             "Python: Frame "

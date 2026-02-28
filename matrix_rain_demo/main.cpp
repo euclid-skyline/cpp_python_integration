@@ -29,13 +29,15 @@ void dump_sys_path();
 // Render matrix rain animation to terminal
 void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors);
 
-// Global flag for clean shutdown
+// Global flag for clean shutdown (set by signal handler on Ctrl+C)
 static bool running = true;
 
-// Global keyboard control states
-static ByteBool paused = FALSE_BYTE;
-static float speed_multiplier = 1.0f;
+// Global keyboard control states (bound to Python for synchronization)
+static ByteBool paused = FALSE_BYTE;  // P key: pause/resume animation
+static float speed_multiplier = 1.0f; // +/- keys: speed adjustment (0.1x to 3.0x)
 
+// Handle non-blocking keyboard input for interactive controls
+// Called each frame to check for user input without blocking
 void handle_keyboard_input()
 {
     int ch = getch();
@@ -269,14 +271,20 @@ int main()
     int total_colors = 6; // We only initialized 6 colors (1-6), so cycle through them
 
     // ---------------------------------------------------------
-    // Bind C++ variables sections
+    // Bind C++ variables to Python
+    // Python can read/write these via cpp.variable_name
     // ---------------------------------------------------------
     int max_rows, max_cols;
-    getmaxyx(stdscr, max_rows, max_cols);
+    getmaxyx(stdscr, max_rows, max_cols); // Get initial terminal size
 
+    // Bind animation state vector (Python mutates this directly)
     PyInterface::bind("columns", matrix_columns);
+
+    // Bind terminal dimensions (Python reads for boundary checks)
     PyInterface::bind("max_rows", max_rows);
     PyInterface::bind("max_cols", max_cols);
+
+    // Bind control states (keyboard modifies, Python reads)
     PyInterface::bind("paused", paused);
     PyInterface::bind("speed_multiplier", speed_multiplier);
 
@@ -295,7 +303,12 @@ int main()
     }
 
     // ---------------------------------------------------------
-    // Main loop
+    // Main render loop: ~30 FPS animation cycle
+    // 1. Call Python to update animation state (column positions, speeds, etc.)
+    // 2. Check keyboard input for interactive controls
+    // 3. Detect terminal resize and update dimensions
+    // 4. Render updated state to terminal
+    // 5. Sleep to maintain consistent frame rate
     // ---------------------------------------------------------
     int frame_count = 0;
     while (running)
@@ -305,14 +318,18 @@ int main()
         if (result)
         {
             Py_DECREF(result);
-            // Check for keyboard input (pause, speed, reset)
+
+            // STEP 1: Check for keyboard input (non-blocking)
+            // Updates paused, speed_multiplier, or clears matrix_columns
             handle_keyboard_input();
 
-            // Always update curses internal size (detect terminal resize)
-            resize_term(0, 0); // Let ncurses resize internal buffers
-            getmaxyx(stdscr, max_rows, max_cols);
-            // Clear screen and fill with black background
-            clear(); // Use clear() instead of erase() to fill with background color
+            // STEP 2: Detect terminal resize and update dimensions
+            // Python reads max_rows/max_cols on next frame to adjust columns
+            resize_term(0, 0);                    // Let ncurses resize internal buffers
+            getmaxyx(stdscr, max_rows, max_cols); // Update bound variables
+
+            // STEP 3: Clear screen and prepare for drawing
+            clear(); // Fills entire screen with black background
 
             // Debug output on first frame and every 50 frames
             if (frame_count == 0 || frame_count % 50 == 0)
@@ -322,7 +339,8 @@ int main()
                           << "\n";
             }
 
-            // Render matrix rain animation
+            // STEP 4: Render all columns by reading Python-updated state
+            // Each column's pos, speed, trail, chars were updated by Python
             render_matrix_rain(matrix_columns, max_rows, max_cols, total_colors);
 
             refresh();
@@ -406,40 +424,52 @@ void dump_sys_path()
 }
 
 // C++ RENDER: Draw matrix rain columns with brightness gradient
+// Reads animation state from Python-updated MatrixColumn structs
+// Creates visual effect: white glowing head, bright trail, dim tail
 void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors)
 {
+    // Iterate through each column (one per terminal column up to max_cols)
     for (size_t x = 0; x < columns.size() && x < static_cast<size_t>(max_cols); ++x)
     {
         const auto &column = columns[x];
-        int pos = static_cast<int>(column.pos);  // Read head position (updated by Python)
-        int trail = column.trail;                // Read trail length
-        const std::string &chars = column.chars; // Read character sequence
 
+        // Read Python-updated animation state for this column
+        int pos = static_cast<int>(column.pos);  // Head Y position (bottom of trail)
+        int trail = column.trail;                // Number of characters in trail (5-20)
+        const std::string &chars = column.chars; // Character sequence to display
+
+        // Cycle through 6 colors (green, yellow, blue, magenta, cyan, white)
         int color_index = (x % total_colors) + 1;
         attron(COLOR_PAIR(color_index));
 
-        // Draw the trail from top to bottom
+        // Draw each character in the trail from top to bottom
+        // i=0 is top (dimmest), i=trail-1 is head (brightest)
         for (int i = 0; i < trail && i < static_cast<int>(chars.size()); ++i)
         {
-            int y = pos - (trail - 1 - i); // trail flows downward from pos
+            // Calculate Y coordinate: trail flows from (pos-trail+1) down to pos
+            int y = pos - (trail - 1 - i);
+
+            // Only draw if within screen bounds
             if (y >= 0 && y < max_rows)
             {
-                // Create brightness gradient: head (i=trail-1) is brightest
+                // Apply brightness gradient: 3 levels for visual depth
                 if (i == trail - 1)
                 {
-                    // Very head: white + bold for maximum brightness
-                    attron(COLOR_PAIR(6)); // White
-                    attron(A_BOLD);
+                    // Head character (bottom): maximum brightness
+                    attron(COLOR_PAIR(6)); // Switch to white
+                    attron(A_BOLD);        // Bold attribute
                 }
                 else if (i >= trail - trail / 3)
                 {
-                    // Top third of trail: bold color for bright shine
-                    attron(A_BOLD);
+                    // Top third of trail: bright shine
+                    attron(A_BOLD); // Bold in column color
                 }
+                // else: lower trail remains normal intensity (dim)
 
+                // Draw the character at calculated position
                 mvaddch(y, static_cast<int>(x), chars[i]);
 
-                // Reset brightness attributes
+                // Reset brightness attributes after drawing
                 if (i == trail - 1)
                 {
                     attroff(A_BOLD);
