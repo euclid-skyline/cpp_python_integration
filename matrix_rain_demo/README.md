@@ -82,39 +82,44 @@ The Matrix rain demo demonstrates a **split-responsibility design**:
 
 ### Data Flow
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Main Loop (C++)                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  1. Call Python update_values()                             │
-│     │                                                       │
-│     └──> Python reads: max_rows, max_cols, paused           │
-│          Python mutates: matrix_columns vector              │
-│              - Update pos (position)                        │
-│              - Update speed                                 │
-│              - Update trail length                          │
-│              - Update chars (character sequence)            │
-│                                                             │
-│  2. Check keyboard input (handle_keyboard_input)            │
-│     │                                                       │
-│     └──> P: toggle paused                                   │
-│          +/-: adjust speed_multiplier                       │
-│          R: clear matrix_columns                            │
-│                                                             │
-│  3. Detect terminal resize (resize_term, getmaxyx)          │
-│                                                             │
-│  4. Render (render_matrix_rain)                             │
-│     │                                                       │
-│     └──> For each column in matrix_columns:                 │
-│              - Read pos, speed, trail, chars                │
-│              - Calculate trail positions                    │
-│              - Apply color and brightness gradient          │
-│              - Draw characters with mvaddch()               │
-│                                                             │
-│  5. Refresh screen and sleep for frame timing               │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Start([Main Loop Start - C++]) --> Step1[1. Call Python update_values]
+    
+    Step1 --> PythonRead[Python reads:<br/>max_rows, max_cols, paused]
+    PythonRead --> PythonMutate[Python mutates matrix_columns vector:<br/>- Update pos position<br/>- Update speed<br/>- Update trail length<br/>- Update chars character sequence]
+    
+    PythonMutate --> Step2[2. Check keyboard input<br/>handle_keyboard_input]
+    
+    Step2 --> KeyboardActions{Keyboard<br/>Actions}
+    KeyboardActions -->|P key| TogglePause[Toggle paused]
+    KeyboardActions -->|+/- keys| AdjustSpeed[Adjust speed_multiplier]
+    KeyboardActions -->|R key| ClearColumns[Clear matrix_columns]
+    KeyboardActions -->|No input| Step3
+    TogglePause --> Step3
+    AdjustSpeed --> Step3
+    ClearColumns --> Step3
+    
+    Step3[3. Detect terminal resize<br/>resize_term, getmaxyx] --> Step4[4. Render matrix_rain]
+    
+    Step4 --> RenderLoop[For each column in matrix_columns:]
+    RenderLoop --> RenderRead[- Read pos, speed, trail, chars]
+    RenderRead --> RenderCalc[- Calculate trail positions]
+    RenderCalc --> RenderColor[- Apply color and brightness gradient]
+    RenderColor --> RenderDraw[- Draw characters with mvaddch]
+    
+    RenderDraw --> Step5[5. Refresh screen and sleep<br/>for frame timing]
+    
+    Step5 --> Start
+
+    style Start fill:#e1f5ff
+    style Step1 fill:#fff4e1
+    style PythonRead fill:#ffe1e1
+    style PythonMutate fill:#ffe1e1
+    style Step2 fill:#e1ffe1
+    style Step3 fill:#f0e1ff
+    style Step4 fill:#ffe1f5
+    style Step5 fill:#e1fff0
 ```
 
 ### Renderer Logic (C++ - render_matrix_rain)
