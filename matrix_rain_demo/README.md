@@ -470,7 +470,36 @@ flowchart TD
     style Step5 fill:#e1fff0
 ```
 
-### Renderer Logic (C++ - render_matrix_rain)
+### Color Palette & Gradient System
+
+**Available Color Pairs (PDCurses Windows Limitation: 8 standard colors)**
+
+```cpp
+init_pair(1, COLOR_GREEN,   COLOR_BLACK);  // GREEN
+init_pair(2, COLOR_YELLOW,  COLOR_BLACK);  // YELLOW
+init_pair(3, COLOR_BLUE,    COLOR_BLACK);  // BLUE
+init_pair(4, COLOR_MAGENTA, COLOR_BLACK);  // MAGENTA
+init_pair(5, COLOR_CYAN,    COLOR_BLACK);  // CYAN
+init_pair(6, COLOR_WHITE,   COLOR_BLACK);  // WHITE (reserved for head only)
+```
+
+**Column-to-Gradient Mapping**
+
+Each column is assigned a base color based on its X position `(x % 5) + 1`, and uses a unique 3-color gradient:
+
+| Column Color | Tail      | Middle    | Near-Head | Head  | Visual Effect |
+|--------------|-----------|-----------|-----------|-------|---------------|
+| GREEN (1)    | BLUE (3)  | GREEN (1) | CYAN (5)  | WHITE | Cool depth |
+| YELLOW (2)   | MAGENTA(4)| YELLOW(2) | CYAN (5)  | WHITE | Warm to cool |
+| BLUE (3)     | BLUE (3)  | CYAN (5)  | YELLOW(2) | WHITE | Blue→Yellow contrast |
+| MAGENTA (4)  | BLUE (3)  | MAGENTA(4)| YELLOW(2) | WHITE | Cool→Warm |
+| CYAN (5)     | BLUE (3)  | CYAN (5)  | YELLOW(2) | WHITE | Cyan→Yellow contrast |
+
+**Why Black is Never Foreground Text**
+
+Black (COLOR_BLACK) is reserved for the background only. All foreground colors are from the visible palette {GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE} to ensure characters are always readable against the black background.
+
+
 
 The renderer reads animation state from the bound `matrix_columns` vector and draws characters to the terminal:
 
@@ -507,16 +536,67 @@ for (int i = 0; i < trail; ++i)
 - Character at index `i=0` is at the top (dimmest)
 - Character at index `i=trail-1` is the head (brightest)
 
-**4. Brightness Gradient**
+**4. Three-Color Brightness Gradient**
+
+Each column displays a smooth color transition from tail to head, creating visual depth:
+
 ```cpp
-if (i == trail - 1)                   // Head character
-    attron(COLOR_PAIR(6) | A_BOLD);   // White + Bold = maximum brightness
-else if (i >= trail - trail / 3)      // Top third of trail
-    attron(A_BOLD);                   // Bold color
-// else: normal intensity (dim tail)
+// Each column has a base color (GREEN, YELLOW, BLUE, MAGENTA, or CYAN)
+// Define 3-color gradient: [tail color, middle color, near-head color]
+int gradient[3];
+switch (base_color)
+{
+case 1:              // GREEN column
+    gradient[0] = 3; // BLUE (dim tail)
+    gradient[1] = 1; // GREEN (medium middle)
+    gradient[2] = 5; // CYAN (bright near-head)
+    break;
+case 2:              // YELLOW column
+    gradient[0] = 4; // MAGENTA (dim tail)
+    gradient[1] = 2; // YELLOW (medium middle)
+    gradient[2] = 5; // CYAN (bright near-head)
+    break;
+// ... (other color combinations)
+}
+
+// For each character, determine which gradient segment it belongs to
+int segment = (i * 3) / trail;  // Maps position to 0=tail, 1=middle, 2=near-head
+int color_pair = (i == trail - 1) ? 6 : gradient[segment];
+// Head always WHITE (COLOR_PAIR(6)), trail uses gradient
 ```
-- Creates visual depth with 3 brightness levels
-- Head glows white, upper trail is bright, lower trail dims
+
+**Visual Example: GREEN Column with Gradient [BLUE → GREEN → CYAN → WHITE]**
+```
+Trail characters from top to bottom:
+chars[0]: BLUE    (tail segment 0, dimmest)
+chars[1]: BLUE    (tail segment 0)
+chars[2]: GREEN   (middle segment 1)
+chars[3]: GREEN   (middle segment 1)
+chars[4]: CYAN    (near-head segment 2, bright)
+chars[5]: WHITE   (head only, brightest) ← pos points here
+```
+
+**Terminal View When Displayed:**
+```
+Row 5:  B  (BLUE)
+Row 6:  l  (BLUE)
+Row 7:  u  (GREEN)
+Row 8:  e  (GREEN)
+Row 9:  s  (CYAN)
+Row 10: H  (WHITE) ← head
+```
+
+**Gradient Design Goals:**
+- **Tail (bottom third):** Dim colors (BLUE) - fade into background
+- **Middle (middle third):** Base colors (GREEN, YELLOW, etc.) - medium brightness
+- **Near-head (top third):** Bright colors (CYAN, YELLOW) - increasing brightness
+- **Head:** Always WHITE - maximum brightness, draws eyes to motion direction
+
+**Why 3-Color Gradient?**
+- Smoother visual transition than single-color trails
+- Creates natural depth: viewer focuses on white head
+- Avoids black foreground (reserved for background)
+- Uses all 6 available PDCurses color pairs efficiently
 
 **5. Character Rendering**
 ```cpp
