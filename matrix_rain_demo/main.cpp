@@ -268,7 +268,9 @@ int main()
     // Set window background to black
     bkgd(COLOR_PAIR(1) | ' '); // Black background with space character
 
-    int total_colors = 6; // We only initialized 6 colors (1-6), so cycle through them
+    // Reserve COLOR_PAIR(6) (white) for head highlight only.
+    // Regular columns cycle through pairs 1-5 so head remains distinct.
+    int total_colors = 5;
 
     // ---------------------------------------------------------
     // Bind C++ variables to Python
@@ -438,8 +440,10 @@ void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, 
         int trail = column.trail;                // Number of characters in trail (5-20)
         const std::string &chars = column.chars; // Character sequence to display
 
-        // Cycle through 6 colors (green, yellow, blue, magenta, cyan, white)
-        int color_index = (x % total_colors) + 1;
+        // CRITICAL: Cycle through colors 1-5 ONLY (not 6)
+        // This ensures trail characters NEVER use white (COLOR_PAIR(6))
+        // White is reserved exclusively for the head character below
+        int color_index = (x % total_colors) + 1; // Range: 1-5 (GREEN, YELLOW, BLUE, MAGENTA, CYAN)
         attron(COLOR_PAIR(color_index));
 
         // Draw each character in the trail from top to bottom
@@ -452,33 +456,27 @@ void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, 
             // Only draw if within screen bounds
             if (y >= 0 && y < max_rows)
             {
-                // Apply brightness gradient: 3 levels for visual depth
+                // PREVENTION: Ensure head gets white, trail gets column color
+                // Trail characters use color_index (1-5), never 6 (white)
+                // Head exclusively switches to COLOR_PAIR(6) only when i==trail-1
+
                 if (i == trail - 1)
                 {
-                    // Head character (bottom): maximum brightness
-                    attron(COLOR_PAIR(6)); // Switch to white
-                    attron(A_BOLD);        // Bold attribute
+                    // Head character (bottom): ONLY place where white is applied
+                    // This ensures head is always white, trail is always colored
+                    attron(COLOR_PAIR(6)); // WHITE - reserved for head only
                 }
-                else if (i >= trail - trail / 3)
-                {
-                    // Top third of trail: bright shine
-                    attron(A_BOLD); // Bold in column color
-                }
-                // else: lower trail remains normal intensity (dim)
+                // else: trail stays in column color (color_index ranges 1-5)
 
                 // Draw the character at calculated position
                 mvaddch(y, static_cast<int>(x), chars[i]);
 
-                // Reset brightness attributes after drawing
+                // Reset color after drawing head
                 if (i == trail - 1)
                 {
-                    attroff(A_BOLD);
+                    // Switch back from white to column color for next iteration
                     attroff(COLOR_PAIR(6));
-                    attron(COLOR_PAIR(color_index)); // Restore column color
-                }
-                else if (i >= trail - trail / 3)
-                {
-                    attroff(A_BOLD);
+                    attron(COLOR_PAIR(color_index)); // Restore column color (1-5)
                 }
             }
         }
