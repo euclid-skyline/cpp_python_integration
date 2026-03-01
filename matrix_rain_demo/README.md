@@ -102,7 +102,7 @@ Let me explain with a concrete example first, then detail each variable:
 ```
 Frame 1: pos=0.0 (INITIALIZATION - Column starts at top)
 Terminal (showing column X=10 only):
-Row 0:  'C'  ← chars[2] (HEAD/bottom - brightest WHITE+BOLD) ← pos is HERE
+Row 0:  'C'  ← chars[2] (HEAD/bottom - brightest WHITE) ← pos is HERE
 Row -1: 'B'  ← chars[1] (above screen, not visible)
 Row -2: 'A'  ← chars[0] (above screen, not visible)
 
@@ -249,9 +249,9 @@ Terminal view (column 15):
 Row 5:  M  (dim)
 Row 6:  A  (dim)
 Row 7:  T  (normal)
-Row 8:  R  (BOLD - top 1/3 of trail)
-Row 9:  I  (BOLD)
-Row 10: X  (WHITE+BOLD - HEAD) ← pos points HERE
+Row 8:  R  (bright middle gradient color)
+Row 9:  I  (bright near-head gradient color)
+Row 10: X  (WHITE - HEAD) ← pos points HERE
 ```
 
 **How Python updates pos:**
@@ -328,8 +328,8 @@ Screen View at Frame 3:
   Row 1: 'Q'  (dim - tail)
   Row 2: '#'  (dim)
   Row 3: '7'  (normal)
-  Row 4: 'm'  (BOLD - top 1/3)
-  Row 5: 'K'  (WHITE+BOLD - HEAD, brightest)
+  Row 4: 'm'  (bright near-head gradient color)
+  Row 5: 'K'  (WHITE - HEAD, brightest)
 
 Frame 4: pos=7.5
   Row 3: 'Q'
@@ -499,9 +499,16 @@ Each column is assigned a base color based on its X position `(x % 5) + 1`, and 
 
 Black (COLOR_BLACK) is reserved for the background only. All foreground colors are from the visible palette {GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE} to ensure characters are always readable against the black background.
 
-
+### Renderer Logic (C++ - render_matrix_rain)
 
 The renderer reads animation state from the bound `matrix_columns` vector and draws characters to the terminal:
+
+**Function Signature:**
+```cpp
+void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors)
+```
+- `total_colors` parameter: Kept for API compatibility (currently suppressed as unused)
+- Modern implementation uses per-column gradient arrays instead of global color cycling
 
 **1. Column Iteration**
 ```cpp
@@ -660,7 +667,7 @@ for index in range(visible_cols):
   - Frame 3: 10.0 + 2.5 = 12.5 (continuous fluid motion)
 - Speed multiplied by `speed_multiplier` (keyboard +/- controls)
 
-**5. Reset Off-Screen Columns**
+**6. Reset Off-Screen Columns**
 ```python
 if column.pos > max_rows + column.trail:
     # Column completely off-screen, recycle it back to top
@@ -674,15 +681,27 @@ if column.pos > max_rows + column.trail:
 - Randomizes speed, trail length, and characters for variety
 - New string immediately starts falling from top
 
-**6. Character Mutation (Optional)**
+**7. Character Mutation (Optional - Glitch Effect)**
 ```python
-if random.random() < 0.1:  # 10% chance per frame
-    mutation_index = random.randint(0, column.trail - 1)
-    chars = chars[:mutation_index] + random.choice(MATRIX_CHARS) + chars[mutation_index + 1:]
-    column.chars = chars
+if random.random() < 0.3 and column.trail > 0:  # 30% chance per frame
+    chars = column.chars
+    
+    # Mutate the HEAD character (chars[trail-1]) - brightest, most visible
+    mutation_index = column.trail - 1  # Always the head
+    
+    old_char = chars[mutation_index]
+    new_char = old_char
+    while new_char == old_char:
+        new_char = random.choice(MATRIX_CHARS)
+    
+    chars = chars[:mutation_index] + new_char + chars[mutation_index + 1:]
+    column.chars = chars  # Apply mutation to C++ string
 ```
-- Randomly changes one character in the trail for visual variety
-- Creates "glitching" effect common in Matrix rain
+- **30% chance per frame** to randomly change the HEAD character
+- **Targets head only** (chars[trail-1]) - the brightest and most visible character
+- **Ensures different character** - loops until new_char differs from old_char
+- Creates "glitching" effect common in Matrix rain effects
+- Head mutation is more visible and impactful than tail mutations
 
 ### Key Design Patterns
 
