@@ -425,11 +425,13 @@ void dump_sys_path()
     Py_DECREF(path);
 }
 
-// C++ RENDER: Draw matrix rain columns with brightness gradient
+// C++ RENDER: Draw matrix rain columns with 3-color brightness gradient
 // Reads animation state from Python-updated MatrixColumn structs
-// Creates visual effect: white glowing head, bright trail, dim tail
+// Creates visual effect: dim tail → medium middle → bright near-head → white head
 void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, int max_cols, int total_colors)
 {
+    (void)total_colors; // Suppress unused parameter warning (kept for API compatibility)
+
     // Iterate through each column (one per terminal column up to max_cols)
     for (size_t x = 0; x < columns.size() && x < static_cast<size_t>(max_cols); ++x)
     {
@@ -440,14 +442,46 @@ void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, 
         int trail = column.trail;                // Number of characters in trail (5-20)
         const std::string &chars = column.chars; // Character sequence to display
 
-        // CRITICAL: Cycle through colors 1-5 ONLY (not 6)
-        // This ensures trail characters NEVER use white (COLOR_PAIR(6))
-        // White is reserved exclusively for the head character below
-        int color_index = (x % total_colors) + 1; // Range: 1-5 (GREEN, YELLOW, BLUE, MAGENTA, CYAN)
-        attron(COLOR_PAIR(color_index));
+        // Base color for this column (cycles through 1-5)
+        int base_color = (x % 5) + 1; // Range: 1-5 (GREEN, YELLOW, BLUE, MAGENTA, CYAN)
+
+        // Define 3-color gradient per base color (avoid black foreground)
+        // Gradient: [tail color, middle color, near-head color]
+        int gradient[3];
+        switch (base_color)
+        {
+        case 1:              // GREEN column
+            gradient[0] = 3; // BLUE (dim)
+            gradient[1] = 1; // GREEN (medium)
+            gradient[2] = 5; // CYAN (bright)
+            break;
+        case 2:              // YELLOW column
+            gradient[0] = 4; // MAGENTA (dim)
+            gradient[1] = 2; // YELLOW (medium)
+            gradient[2] = 5; // CYAN (bright)
+            break;
+        case 3:              // BLUE column
+            gradient[0] = 3; // BLUE (dim)
+            gradient[1] = 5; // CYAN (medium)
+            gradient[2] = 2; // YELLOW (bright)
+            break;
+        case 4:              // MAGENTA column
+            gradient[0] = 3; // BLUE (dim)
+            gradient[1] = 4; // MAGENTA (medium)
+            gradient[2] = 2; // YELLOW (bright)
+            break;
+        case 5:              // CYAN column
+            gradient[0] = 3; // BLUE (dim)
+            gradient[1] = 5; // CYAN (medium)
+            gradient[2] = 2; // YELLOW (bright)
+            break;
+        default:
+            gradient[0] = gradient[1] = gradient[2] = 1; // Fallback to GREEN
+            break;
+        }
 
         // Draw each character in the trail from top to bottom
-        // i=0 is top (dimmest), i=trail-1 is head (brightest)
+        // i=0 is top (tail), i=trail-1 is head
         for (int i = 0; i < trail && i < static_cast<int>(chars.size()); ++i)
         {
             // Calculate Y coordinate: trail flows from (pos-trail+1) down to pos
@@ -456,31 +490,29 @@ void render_matrix_rain(const std::vector<MatrixColumn> &columns, int max_rows, 
             // Only draw if within screen bounds
             if (y >= 0 && y < max_rows)
             {
-                // PREVENTION: Ensure head gets white, trail gets column color
-                // Trail characters use color_index (1-5), never 6 (white)
-                // Head exclusively switches to COLOR_PAIR(6) only when i==trail-1
+                int color_pair;
 
                 if (i == trail - 1)
                 {
-                    // Head character (bottom): ONLY place where white is applied
-                    // This ensures head is always white, trail is always colored
-                    attron(COLOR_PAIR(6)); // WHITE - reserved for head only
+                    // Head (bottom): always white for maximum brightness
+                    color_pair = 6; // WHITE
                 }
-                // else: trail stays in column color (color_index ranges 1-5)
+                else
+                {
+                    // Trail characters: map position to gradient segment (0, 1, or 2)
+                    // Divide trail into 3 equal segments based on character position
+                    int segment = (i * 3) / trail; // Range: 0-2 (0=tail, 1=middle, 2=near-head)
+                    if (segment > 2)
+                        segment = 2; // Safety clamp
 
-                // Draw the character at calculated position
+                    color_pair = gradient[segment];
+                }
+
+                // Apply color and draw character
+                attron(COLOR_PAIR(color_pair));
                 mvaddch(y, static_cast<int>(x), chars[i]);
-
-                // Reset color after drawing head
-                if (i == trail - 1)
-                {
-                    // Switch back from white to column color for next iteration
-                    attroff(COLOR_PAIR(6));
-                    attron(COLOR_PAIR(color_index)); // Restore column color (1-5)
-                }
+                attroff(COLOR_PAIR(color_pair));
             }
         }
-
-        attroff(COLOR_PAIR(color_index));
     }
 }
