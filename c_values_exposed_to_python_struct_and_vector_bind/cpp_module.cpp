@@ -47,7 +47,13 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
         auto *bs = static_cast<BoundStruct *>(val);
         // Create a wrapper that the proxy can own and delete safely
         BoundStruct *wrapper = new BoundStruct(bs->name, bs->instance(), bs->info());
-        return StructProxy_New(wrapper);
+        PyObject *result = StructProxy_New(wrapper);
+        if (!result)
+        {
+            // Issue 3 fix in Gemini Review: Delete wrapper on proxy creation failure
+            delete wrapper;
+        }
+        return result;
     }
 
     case ValueType::Vector:
@@ -55,7 +61,13 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
         auto *bv = static_cast<BoundVector *>(val);
         // Create a wrapper that the proxy can own and delete safely
         BoundVector *wrapper = new BoundVector(bv->name, bv->raw_vector(), bv->info());
-        return VectorProxy_New(wrapper);
+        PyObject *result = VectorProxy_New(wrapper);
+        if (!result)
+        {
+            // Issue 3 fix in Gemini Review: Delete wrapper on proxy creation failure
+            delete wrapper;
+        }
+        return result;
     }
 
     default:
