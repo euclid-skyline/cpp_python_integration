@@ -2,53 +2,16 @@
 #include "value_interface.hpp"
 #include <vector>
 #include <mutex>
+#include <cstring>
 
 // ============================================================================
-// HELPER FUNCTIONS
+// NOTE (Issue 1 + Issue 2):
+// Struct creation for append_new() now relies on StructInfo metadata:
+//   - sinfo->size         : compile-time sizeof(struct_type)
+//   - sinfo->construct_fn : placement-new default constructor
+//   - sinfo->destruct_fn  : explicit destructor
+// This replaces manual size computation and field-by-field string init.
 // ============================================================================
-
-// ------------------------------------------------------------
-// Helper: Calculate struct size from StructInfo
-// Used by VectorProxy_append_new() to allocate struct instances
-// ------------------------------------------------------------
-static std::size_t calculate_struct_size(const StructInfo *sinfo)
-{
-    if (!sinfo || sinfo->fields.empty())
-        return 0;
-
-    const FieldInfo &last = sinfo->fields.back();
-    std::size_t field_size = 0;
-
-    switch (last.type)
-    {
-    case ValueType::Int:
-        field_size = sizeof(int);
-        break;
-    case ValueType::Float:
-        field_size = sizeof(float);
-        break;
-    case ValueType::Bool:
-        field_size = sizeof(ByteBool);
-        break;
-    case ValueType::String:
-        field_size = sizeof(std::string);
-        break;
-    case ValueType::Struct:
-    {
-        const StructInfo *nested = static_cast<const StructInfo *>(last.type_meta);
-        field_size = nested ? calculate_struct_size(nested) : 0;
-        break;
-    }
-    case ValueType::Vector:
-        field_size = sizeof(std::vector<int>); // All vectors same size
-        break;
-    default:
-        field_size = 0;
-        break;
-    }
-
-    return last.offset + field_size;
-}
 
 // ============================================================================
 // SECTION 1 — RootProxy (from value_interface_proxy.cpp)
@@ -814,48 +777,47 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     }
 
     const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
-
-    // Calculate struct size using helper function
-    std::size_t struct_size = calculate_struct_size(sinfo);
-
-    // Validate that struct size is non-zero
-    if (struct_size == 0)
+    // Issue 2: use metadata size (sizeof) instead of manual field-offset math.
+    if (!sinfo || sinfo->size == 0)
     {
-        PyErr_SetString(PyExc_RuntimeError, "Cannot append struct with zero size");
+        PyErr_SetString(PyExc_RuntimeError, "Cannot append struct with invalid metadata size");
         return nullptr;
     }
 
-    // Allocate zero-initialized memory for the struct
-    void *new_instance = ::operator new(struct_size);
-    std::memset(new_instance, 0, struct_size);
+    // Allocate raw storage for one struct instance.
+    void *new_instance = ::operator new(sinfo->size);
 
-    // Initialize string fields properly
-    for (const auto &field : sinfo->fields)
+    bool constructed = false;
+    // Issue 1: construct full object graph (string/vector/nested types included).
+    if (sinfo->construct_fn)
     {
-        if (field.type == ValueType::String)
-        {
-            void *fieldPtr = reinterpret_cast<char *>(new_instance) + field.offset;
-            new (fieldPtr) std::string();
-        }
+        sinfo->construct_fn(new_instance);
+        constructed = true;
+    }
+    else
+    {
+        // Fallback for incomplete metadata (kept defensive only).
+        std::memset(new_instance, 0, sinfo->size);
     }
 
-    // Append to vector
-    vec->append_from_cpp(new_instance);
+    // append_from_cpp performs copy into the destination vector.
+    bool append_ok = vec->append_from_cpp(new_instance);
+
+    // Destroy temporary object before releasing raw storage.
+    if (constructed && sinfo->destruct_fn)
+    {
+        sinfo->destruct_fn(new_instance);
+    }
+    ::operator delete(new_instance);
+
+    if (!append_ok)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to append new struct instance");
+        return nullptr;
+    }
 
     // Get the last element (the one we just added)
     std::size_t last_idx = vec->size() - 1;
-
-    // Clean up temporary allocation
-    // Destroy string fields before freeing
-    for (const auto &field : sinfo->fields)
-    {
-        if (field.type == ValueType::String)
-        {
-            void *fieldPtr = reinterpret_cast<char *>(new_instance) + field.offset;
-            reinterpret_cast<std::string *>(fieldPtr)->~basic_string();
-        }
-    }
-    ::operator delete(new_instance);
 
     // Return a proxy to the newly added element (using parent + index for Issue 26 fix)
     BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);

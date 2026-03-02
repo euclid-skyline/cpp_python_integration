@@ -12,19 +12,47 @@ class BoundVector;
 // BoundStruct
 // ---------------------------------------------------------
 
-// Metadata for struct fields
+// ============================================================================
+// FieldInfo - Description of one field within a struct
+// ============================================================================
 struct FieldInfo
 {
-    std::string name;
-    size_t offset;         // byte offset from struct base
-    ValueType type;        // Int, Float, Bool, String, Struct, Vector
-    const void *type_meta; // optional: points to StructInfo / VectorInfo if needed
+    std::string name;      // Field name as declared in struct
+    size_t offset;         // Byte offset from struct base (e.g., offsetof(Struct, field))
+    ValueType type;        // Field type: Int, Float, Bool, String, Struct, or Vector
+    const void *type_meta; // Optional metadata for complex types:
+                           //   - If type==Struct: pointer to StructInfo for nested struct
+                           //   - If type==Vector: pointer to VectorInfo for field vector
+                           //   - Otherwise: nullptr
 };
 
+// ============================================================================
+// StructInfo - Complete metadata for a reflected struct type
+// ============================================================================
+// Populated at compile-time by REGISTER_STRUCT macro.
+// Used by proxy system for safe field access, memory allocation, and lifetime mgmt.
+// ============================================================================
 struct StructInfo
 {
-    std::string name;
-    std::vector<FieldInfo> fields;
+    std::string name; // Struct type name (e.g., "Enemy", "Team")
+
+    std::vector<FieldInfo> fields; // All fields in declaration order.
+                                   // Used for field lookups and reflection.
+
+    std::size_t size; // Total size of struct (Issue 2 fix).
+                      // Replaces unsafe runtime field-offset math.
+                      // Set by REGISTER_STRUCT via sizeof(struct_type).
+
+    void (*construct_fn)(void *); // Placement-new default constructor (Issue 1 fix).
+                                  // Called to initialize new instances:
+                                  //   - Handles nested std::vector/std::string fields
+                                  //   - Calls themselves recursively for nested structs
+                                  //   - nullptr if struct has no ctor requirements.
+
+    void (*destruct_fn)(void *); // Explicit destructor (Issue 1 fix).
+                                 // Called before deallocating:
+                                 //   - Destructs all non-trivial members (string, vector)
+                                 //   - nullptr if struct has no dtor requirements.
 };
 
 class BoundStruct : public BoundValue
@@ -58,51 +86,6 @@ public:
     void *get_field_ptr(const FieldInfo *f) const
     {
         return reinterpret_cast<char *>(instance()) + f->offset;
-    }
-
-    size_t compute_struct_size(const StructInfo *sinfo) const
-    {
-        if (sinfo->fields.empty())
-            return 0;
-
-        const FieldInfo &last = sinfo->fields.back();
-
-        size_t field_size = 0;
-
-        switch (last.type)
-        {
-        case ValueType::Int:
-            field_size = sizeof(int);
-            break;
-
-        case ValueType::Float:
-            field_size = sizeof(float);
-            break;
-
-        case ValueType::Bool:
-            field_size = sizeof(ByteBool);
-            break;
-
-        case ValueType::String:
-            field_size = sizeof(std::string);
-            break;
-
-        case ValueType::Struct:
-            field_size = compute_struct_size(
-                static_cast<const StructInfo *>(last.type_meta));
-            break;
-
-        case ValueType::Vector:
-            // The struct stores a std::vector<T> object
-            field_size = sizeof(std::vector<std::byte>);
-            break;
-
-        default:
-            field_size = 0;
-            break;
-        }
-
-        return last.offset + field_size;
     }
 
     const StructInfo *info() const { return m_info; }

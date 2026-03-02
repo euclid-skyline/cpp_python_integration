@@ -29,9 +29,12 @@
 //   )
 
 #define REGISTER_STRUCT(struct_type, struct_name_str, ...)   \
-    static StructInfo struct_type##Info = {                  \
+    inline StructInfo struct_type##Info = {                  \
         struct_name_str,                                     \
-        {__VA_ARGS__}};                                      \
+        {__VA_ARGS__},                                       \
+        sizeof(struct_type),                                 \
+        generic_struct_construct<struct_type>,               \
+        generic_struct_destruct<struct_type>};               \
     template <>                                              \
     struct is_reflected_struct<struct_type> : std::true_type \
     {                                                        \

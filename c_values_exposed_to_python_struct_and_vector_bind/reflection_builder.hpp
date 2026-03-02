@@ -59,6 +59,18 @@ void generic_vec_destroy(void *vec_ptr)
     delete static_cast<std::vector<T> *>(vec_ptr);
 }
 
+template <typename T>
+void generic_struct_construct(void *ptr)
+{
+    new (ptr) T();
+}
+
+template <typename T>
+void generic_struct_destruct(void *ptr)
+{
+    static_cast<T *>(ptr)->~T();
+}
+
 // ---------------------------------------------------------
 // PART 2: VECTORINFO BUILDER FUNCTION
 // ---------------------------------------------------------

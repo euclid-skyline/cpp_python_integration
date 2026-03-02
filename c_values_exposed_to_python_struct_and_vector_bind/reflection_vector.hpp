@@ -12,21 +12,53 @@ struct StructInfo;
 // BoundVector
 // ---------------------------------------------------------
 
-// Metadata for vector elements
+// ============================================================================
+// VectorInfo - Complete metadata for a reflected vector type
+// ============================================================================
+// Populated at compile-time by REGISTER_VECTOR macro via make_vector_info<>().
+// Provides type-erased access to std::vector<T> through function pointers.
+// ============================================================================
 struct VectorInfo
 {
-    ValueType element_type;   // Int, Float, Bool, String, Struct, ...
-    const void *element_meta; // e.g. StructInfo* if element_type == Struct or VectorInfo* if element_type == Vector (for nested vectors)
+    ValueType element_type; // Type of elements: Int, Float, Bool, String, Struct, Vector, etc.
 
-    // Function pointers for type-erased operations
+    const void *element_meta; // Metadata for element type (used if element_type is complex):
+                              //   - If element_type==Struct: points to StructInfo
+                              //   - If element_type==Vector: points to VectorInfo (nested)
+                              //   - Otherwise (scalar): nullptr
+
+    // ========== Type-erased operations via generic_vec_* templates ==========
+    // All function pointers are filled in by make_vector_info<ElementType>()
+    // and work with void* representing std::vector<ElementType>*
+
     std::size_t (*size_fn)(void *vec_ptr);
+    // Returns number of elements in vector.
+    // Generated: generic_vec_size<ElementType>
+
     void *(*element_ptr_fn)(void *vec_ptr, std::size_t index);
+    // Returns pointer to element at [index].
+    // Bounds-checked: returns nullptr if index >= size().
+    // Generated: generic_vec_element_ptr<ElementType>
+
     bool (*append_fn)(void *vec_ptr, void *value_ptr);
+    // Appends *value_ptr (ElementType*) to vector.
+    // Return: true on success, false on error.
+    // Generated: generic_vec_append<ElementType>
+
     void *(*create_empty_vec_fn)();
+    // Allocates and returns new empty std::vector<ElementType>.
+    // Caller responsible for later destroy_vec_fn() call.
+    // Generated: generic_vec_create_empty<ElementType>
+
     void (*destroy_vec_fn)(void *vec_ptr);
+    // Destroys and deallocates vector.
+    // No-op if vec_ptr is nullptr.
+    // Generated: generic_vec_destroy<ElementType>
 };
-// Note: For simplicity, we assume all vectors are std::vector<T> and we only store a void* to it.
-// The VectorInfo tells us how to interpret the elements.
+// ===== Note: Void pointer trick for type-erasure =====
+// All vectors stored as void* pointing to std::vector<T>.
+// VectorInfo function pointers know the true element type T via template instantiation.
+// This allows uniform Python API that works for vector<int>, vector<Enemy>, etc.
 class BoundVector : public BoundValue
 {
 public:
