@@ -80,7 +80,7 @@ public:
         this->type = ValueType::Vector;
     }
 
-    // Constructor for vector fields inside structs (Issue 5 fix - parent struct tracking)
+    // Constructor for vector fields inside structs (Issue 5 fix in Gemini Review - parent struct tracking)
     // Used when a vector is a field inside a struct (e.g., std::vector member)
     BoundVector(const std::string &name, BoundStruct *parent, std::size_t field_offset, const VectorInfo *info)
         : m_vec_ptr(nullptr), m_info(info), m_parent_vector(nullptr), m_element_index(0),
@@ -109,13 +109,13 @@ public:
 
     void *raw_vector() const
     {
-        // Priority 1: If this vector is a field inside a struct (Issue 5 fix)
+        // Priority 1: If this vector is a field inside a struct (Issue 5 fixn in Gemini Review)
         if (m_parent_struct)
         {
             // Recalculate address from parent: parent_addr + field_offset
             return reinterpret_cast<char *>(m_parent_struct->instance()) + m_field_offset;
         }
-        // Priority 2: If this vector is an element in another vector (Issue 26 fix)
+        // Priority 2: If this vector is an element in another vector (Issue 26 fix in Copilot Review)
         if (m_parent_vector)
         {
             // Nested vector: resolve from parent
@@ -137,11 +137,11 @@ private:
     void *m_vec_ptr;          // pointer to std::vector<T> (for top-level vectors)
     const VectorInfo *m_info; // element type metadata
 
-    // For nested vectors (Issue 26 fix)
+    // For nested vectors (Issue 26 fix in Copilot Review - parent tracking)
     BoundVector *m_parent_vector; // nullptr if not nested in another vector
     std::size_t m_element_index;  // Valid only if m_parent_vector != nullptr
 
-    // For vector fields inside structs (Issue 5 fix)
+    // For vector fields inside structs (Issue 5 fix in Gemini Review - parent struct tracking)
     BoundStruct *m_parent_struct; // nullptr if not a field inside a struct
     std::size_t m_field_offset;   // Field offset from parent struct base
 };

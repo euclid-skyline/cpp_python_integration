@@ -630,7 +630,7 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     case ValueType::Struct:
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
-        // Use parent + index constructor instead of raw pointer (Issue 26 fix)
+        // Use parent + index constructor instead of raw pointer (Issue 26 fix in Copilot Review)
         BoundStruct *bstruct = new BoundStruct(
             proxy->bound->name,
             proxy->bound,                    // Parent vector
@@ -642,7 +642,7 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(info->element_meta);
-        // Use parent + index constructor instead of raw pointer (Issue 26 fix)
+        // Use parent + index constructor instead of raw pointer (Issue 26 fix in Copilot Review)
         BoundVector *bvec = new BoundVector(
             proxy->bound->name,
             proxy->bound,                    // Parent vector

@@ -76,7 +76,7 @@ public:
         this->type = ValueType::Struct;
     }
 
-    // Constructor for nested struct fields (Issue 5 fix - parent struct tracking)
+    // Constructor for nested struct fields (Issue 5 fix in Gemini Review - parent struct tracking)
     // Used when a struct field is itself a struct (e.g., struct inside struct)
     BoundStruct(const std::string &name, BoundStruct *parent, std::size_t field_offset, const StructInfo *info)
         : m_instance(nullptr), m_info(info), m_parent_vector(nullptr), m_element_index(0),
@@ -109,11 +109,11 @@ private:
     void *m_instance; // Raw pointer (for standalone structs)
     const StructInfo *m_info;
 
-    // For vector elements (Issue 26 fix)
+    // For vector elements (Issue 26 fix in Copilot Review - parent vector tracking)
     BoundVector *m_parent_vector; // nullptr if not from vector
     std::size_t m_element_index;  // Valid only if m_parent_vector != nullptr
 
-    // For nested struct fields (Issue 5 fix)
+    // For nested struct fields (Issue 5 fix in Gemini Review - parent struct tracking)
     BoundStruct *m_parent_struct; // nullptr if not a field inside another struct
     std::size_t m_field_offset;   // Field offset from parent struct base
 };
