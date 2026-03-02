@@ -29,7 +29,7 @@
 //   )
 
 #define REGISTER_STRUCT(struct_type, struct_name_str, ...)   \
-    inline StructInfo struct_type##Info = {                  \
+    inline const StructInfo struct_type##Info = {            \
         struct_name_str,                                     \
         {__VA_ARGS__},                                       \
         sizeof(struct_type),                                 \
