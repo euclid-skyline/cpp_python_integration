@@ -62,9 +62,10 @@ struct VectorInfo
 class BoundVector : public BoundValue
 {
 public:
-    // Constructor for standalone vectors (not from vector)
+    // Constructor for standalone vectors (not from vector or struct field)
     BoundVector(const std::string &name, void *vec_ptr, const VectorInfo *info)
-        : m_vec_ptr(vec_ptr), m_info(info), m_parent_vector(nullptr), m_element_index(0)
+        : m_vec_ptr(vec_ptr), m_info(info), m_parent_vector(nullptr), m_element_index(0),
+          m_parent_struct(nullptr), m_field_offset(0)
     {
         this->name = name;
         this->type = ValueType::Vector;
@@ -72,7 +73,18 @@ public:
 
     // Constructor for nested vectors (element of another vector) - parent tracking
     BoundVector(const std::string &name, BoundVector *parent, std::size_t index, const VectorInfo *info)
-        : m_vec_ptr(nullptr), m_info(info), m_parent_vector(parent), m_element_index(index)
+        : m_vec_ptr(nullptr), m_info(info), m_parent_vector(parent), m_element_index(index),
+          m_parent_struct(nullptr), m_field_offset(0)
+    {
+        this->name = name;
+        this->type = ValueType::Vector;
+    }
+
+    // Constructor for vector fields inside structs (Issue 5 fix - parent struct tracking)
+    // Used when a vector is a field inside a struct (e.g., std::vector member)
+    BoundVector(const std::string &name, BoundStruct *parent, std::size_t field_offset, const VectorInfo *info)
+        : m_vec_ptr(nullptr), m_info(info), m_parent_vector(nullptr), m_element_index(0),
+          m_parent_struct(parent), m_field_offset(field_offset)
     {
         this->name = name;
         this->type = ValueType::Vector;
@@ -97,12 +109,20 @@ public:
 
     void *raw_vector() const
     {
+        // Priority 1: If this vector is a field inside a struct (Issue 5 fix)
+        if (m_parent_struct)
+        {
+            // Recalculate address from parent: parent_addr + field_offset
+            return reinterpret_cast<char *>(m_parent_struct->instance()) + m_field_offset;
+        }
+        // Priority 2: If this vector is an element in another vector (Issue 26 fix)
         if (m_parent_vector)
         {
             // Nested vector: resolve from parent
             return m_parent_vector->element_ptr(m_element_index);
         }
-        return m_vec_ptr; // Top-level vector
+        // Priority 3: Top-level vector with static address
+        return m_vec_ptr;
     }
 
     // ------------------------------------------------------------
@@ -118,6 +138,10 @@ private:
     const VectorInfo *m_info; // element type metadata
 
     // For nested vectors (Issue 26 fix)
-    BoundVector *m_parent_vector; // nullptr if top-level
+    BoundVector *m_parent_vector; // nullptr if not nested in another vector
     std::size_t m_element_index;  // Valid only if m_parent_vector != nullptr
+
+    // For vector fields inside structs (Issue 5 fix)
+    BoundStruct *m_parent_struct; // nullptr if not a field inside a struct
+    std::size_t m_field_offset;   // Field offset from parent struct base
 };

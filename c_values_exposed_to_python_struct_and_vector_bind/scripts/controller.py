@@ -42,7 +42,7 @@ def update_values():
         "Scores after modification second element in Python script:",
         [cpp.scores[i] for i in range(len(cpp.scores))],
     )
-    # Example 3 - Struct containing a vector
+    # Example 3 - Struct containing a vector: Team
     print("\n=== 3) Struct containing a vector: Team ===")
     print("Team fields count in C++:", len(cpp.team))
     print("Team average in C++:", cpp.team.average)
@@ -179,6 +179,41 @@ def update_values():
         print(f"\nWave {i} has {len(enemy_wave)} enemies:")
         for j, enemy in enumerate(enemy_wave):
             print(f"  Enemy {j} via iteration: health={enemy.health}, x={enemy.x}")
+
+    # ===== ISSUE 5: Cache the first wave AND modify it =====
+    first_wave_proxy = cpp.enemy_waves[0]
+    print(f"Cached first_wave_proxy")
+    print(f"First wave size before reallocation: {len(first_wave_proxy)}")
+
+    # Store original value to verify later
+    original_health = first_wave_proxy[0].health if len(first_wave_proxy) > 0 else None
+    print(f"Original first enemy health in wave: {original_health}")
+
+    # ===== FORCE REALLOCATION - append 1000 new waves =====
+    print("\nAppending 1000 waves (forcing outer vector reallocation)...")
+    for i in range(1000):
+        new_wave = cpp.enemy_waves.append_new_vector()
+        new_enemy = new_wave.append_new()
+        new_enemy.health = 50 + i
+        new_enemy.x = float(i)
+
+    print(f"Enemy waves count after reallocation: {len(cpp.enemy_waves)}")
+
+    # ===== NOW TRY TO WRITE to the DANGLING PROXY =====
+    print("\n--- CRITICAL: Writing to cached proxy after reallocation ---")
+    try:
+        # Try to modify - this will write to stale memory!
+        if len(first_wave_proxy) > 0:
+            print(f"Attempting to modify first_wave_proxy[0].health...")
+            first_wave_proxy[0].health = 9999  # ❌ Writing to dangling memory!
+            print(f"❌ No crash - wrote to stale memory! Undefined behavior!")
+    except Exception as e:
+        print(f"✓ CRASH on write: {type(e).__name__}: {e}")
+
+    # Verify direct access
+    print(f"\nDirect access cpp.enemy_waves[0][0].health: {cpp.enemy_waves[0][0].health}")
+    print(f"Cached proxy value (if still exists): {first_wave_proxy[0].health if len(first_wave_proxy) > 0 else 'N/A'}")
+
 
 def test_boundary_conditions():
     """Issue 15: Test boundary conditions and error handling"""

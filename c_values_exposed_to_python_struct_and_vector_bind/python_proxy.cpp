@@ -329,7 +329,9 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     case ValueType::Struct:
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
-        BoundStruct *bstruct = new BoundStruct(field->name, fieldPtr, sinfo);
+        // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
+        // This ensures the nested struct proxy can recalculate its address if parent moves
+        BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
         PyObject *result = StructProxy_New(bstruct);
         if (!result)
         {
@@ -341,7 +343,9 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
-        BoundVector *bvec = new BoundVector(field->name, fieldPtr, vinfo);
+        // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
+        // This ensures the nested vector proxy can recalculate its address if parent moves
+        BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
         PyObject *result = VectorProxy_New(bvec);
         if (!result)
         {

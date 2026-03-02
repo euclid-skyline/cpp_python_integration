@@ -58,17 +58,29 @@ struct StructInfo
 class BoundStruct : public BoundValue
 {
 public:
-    // Constructor for standalone structs (not from vector)
+    // Constructor for standalone structs (not from vector or struct field)
     BoundStruct(const std::string &name, void *instance, const StructInfo *info)
-        : m_instance(instance), m_info(info), m_parent_vector(nullptr), m_element_index(0)
+        : m_instance(instance), m_info(info), m_parent_vector(nullptr), m_element_index(0),
+          m_parent_struct(nullptr), m_field_offset(0)
     {
         this->name = name;
         this->type = ValueType::Struct;
     }
 
-    // Constructor for vector elements (parent tracking)
+    // Constructor for vector elements (Issue 26 fix - parent vector tracking)
     BoundStruct(const std::string &name, BoundVector *parent, std::size_t index, const StructInfo *info)
-        : m_instance(nullptr), m_info(info), m_parent_vector(parent), m_element_index(index)
+        : m_instance(nullptr), m_info(info), m_parent_vector(parent), m_element_index(index),
+          m_parent_struct(nullptr), m_field_offset(0)
+    {
+        this->name = name;
+        this->type = ValueType::Struct;
+    }
+
+    // Constructor for nested struct fields (Issue 5 fix - parent struct tracking)
+    // Used when a struct field is itself a struct (e.g., struct inside struct)
+    BoundStruct(const std::string &name, BoundStruct *parent, std::size_t field_offset, const StructInfo *info)
+        : m_instance(nullptr), m_info(info), m_parent_vector(nullptr), m_element_index(0),
+          m_parent_struct(parent), m_field_offset(field_offset)
     {
         this->name = name;
         this->type = ValueType::Struct;
@@ -100,6 +112,10 @@ private:
     // For vector elements (Issue 26 fix)
     BoundVector *m_parent_vector; // nullptr if not from vector
     std::size_t m_element_index;  // Valid only if m_parent_vector != nullptr
+
+    // For nested struct fields (Issue 5 fix)
+    BoundStruct *m_parent_struct; // nullptr if not a field inside another struct
+    std::size_t m_field_offset;   // Field offset from parent struct base
 };
 // After BoundStruct is defined, include BoundVector to complete inline implementations
 #include "reflection_vector.hpp"
@@ -107,10 +123,17 @@ private:
 // Now implement BoundStruct::instance() which needs full BoundVector definition
 inline void *BoundStruct::instance() const
 {
+    // Priority 1: If this struct is a field inside another struct (Issue 5 fix in Gemini Review)
+    if (m_parent_struct)
+    {
+        // Recalculate address from parent: parent_addr + field_offset
+        return reinterpret_cast<char *>(m_parent_struct->instance()) + m_field_offset;
+    }
+    // Priority 2: If this struct is an element in a vector (Issue 26 fix in Copilot Review)
     if (m_parent_vector)
     {
-        // Resolve pointer from current vector state
         return m_parent_vector->element_ptr(m_element_index);
     }
-    return m_instance; // Static pointer for non-vector structs
+    // Priority 3: Standalone struct with static address
+    return m_instance;
 }
