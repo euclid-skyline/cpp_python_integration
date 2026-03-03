@@ -324,6 +324,15 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     case ValueType::Struct:
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
+        // Issue 57 fix: Validate metadata is present before dereference
+        if (!sinfo)
+        {
+            PyErr_Format(PyExc_RuntimeError,
+                         "Internal error: Struct field '%s' has null metadata. "
+                         "Check FIELD() registration for this struct field.",
+                         field->name.c_str());
+            return nullptr;
+        }
         // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
         // This ensures the nested struct proxy can recalculate its address if parent moves
         BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
@@ -338,6 +347,15 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
+        // Issue 57 fix: Validate metadata is present before dereference
+        if (!vinfo)
+        {
+            PyErr_Format(PyExc_RuntimeError,
+                         "Internal error: Vector field '%s' has null metadata. "
+                         "Check FIELD() registration for this vector field.",
+                         field->name.c_str());
+            return nullptr;
+        }
         // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
         // This ensures the nested vector proxy can recalculate its address if parent moves
         BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
@@ -628,6 +646,14 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     case ValueType::Struct:
     {
         const StructInfo *sinfo = static_cast<const StructInfo *>(info->element_meta);
+        // Issue 57 fix: Validate metadata is present before dereference
+        if (!sinfo)
+        {
+            PyErr_Format(PyExc_RuntimeError,
+                         "Internal error: Vector has null struct element metadata. "
+                         "Check REGISTER_VECTOR() for this vector type.");
+            return nullptr;
+        }
         // Use parent + index constructor instead of raw pointer (Issue 26 fix in Copilot Review)
         BoundStruct *bstruct = new BoundStruct(
             proxy->bound->name,
@@ -640,6 +666,14 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
     case ValueType::Vector:
     {
         const VectorInfo *vinfo = static_cast<const VectorInfo *>(info->element_meta);
+        // Issue 57 fix: Validate metadata is present before dereference
+        if (!vinfo)
+        {
+            PyErr_Format(PyExc_RuntimeError,
+                         "Internal error: Vector has null vector element metadata. "
+                         "Check REGISTER_VECTOR() for this nested vector type.");
+            return nullptr;
+        }
         // Use parent + index constructor instead of raw pointer (Issue 26 fix in Copilot Review)
         BoundVector *bvec = new BoundVector(
             proxy->bound->name,
