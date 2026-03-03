@@ -939,8 +939,10 @@ PyObject *create_cpp_proxy() {
 ```cpp
 class PyInterface {
 public:
-    static inline std::unordered_map<std::string, std::unique_ptr<BoundValue>> g_values;
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& g_values();
     // ❌ NO MUTEX PROTECTION
+private:
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& get_values();
 };
 ```
 
@@ -1046,8 +1048,8 @@ int main() {
 ```cpp
 class PyInterface {
 public:
-    static inline std::unordered_map<std::string, std::unique_ptr<BoundValue>> g_values;
-    static inline std::mutex g_values_mutex;  // ← ADD THIS
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& g_values();
+    static std::mutex& g_values_mutex();  // ← ADD THIS
 };
 ```
 
@@ -1056,15 +1058,16 @@ public:
 // In bind()
 template <typename T>
 static void bind(const std::string &name, T &variable) {
-    std::lock_guard<std::mutex> lock(g_values_mutex);  // ← ADD THIS
+    std::lock_guard<std::mutex> lock(g_values_mutex());  // ← ADD THIS
     // ... existing code ...
 }
 
 // In get_value_raw()
 static BoundValue *get_value_raw(const std::string &name) {
-    std::lock_guard<std::mutex> lock(g_values_mutex);  // ← ADD THIS
-    auto it = g_values.find(name);
-    return (it != g_values.end()) ? it->second.get() : nullptr;
+    std::lock_guard<std::mutex> lock(g_values_mutex());  // ← ADD THIS
+    auto &values = g_values();
+    auto it = values.find(name);
+    return (it != values.end()) ? it->second.get() : nullptr;
 }
 ```
 

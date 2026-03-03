@@ -352,22 +352,22 @@ case ValueType::Vector:
 case ValueType::Struct:
 {
     const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
-    // For struct fields, we still use raw pointer (parent is a struct, not vector)
-    // Only vector elements need parent tracking
-    BoundStruct *bstruct = new BoundStruct(field->name, fieldPtr, sinfo);
-    return StructProxy_New(bstruct);
+    // Issue 5: pass parent struct + field offset, not raw field pointer
+    // This keeps nested proxies valid if the parent struct address changes.
+    BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
+    return StructProxy_New(bstruct, self);
 }
 
 case ValueType::Vector:
 {
     const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
-    // Vectors as struct fields also use raw pointer (struct layout is stable)
-    BoundVector *bvec = new BoundVector(field->name, fieldPtr, vinfo);
-    return VectorProxy_New(bvec);
+    // Issue 5: same rule for vector fields nested inside structs
+    BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
+    return VectorProxy_New(bvec, self);
 }
 ```
 
-**Note:** Struct fields don't need parent tracking because struct memory layout is **stable** (structs don't reallocate).
+**Note:** Struct fields do need parent-tracking context when exposed as long-lived proxies. Even though field offsets are stable, the containing object can move (for example, parent is itself vector-backed), so address resolution must remain lazy via parent + offset.
 
 ---
 

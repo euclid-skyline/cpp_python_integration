@@ -120,7 +120,7 @@ This document provides function-by-function implementation details and data flow
 - `running` flag: `static bool` (stack)
 - `player`, `team`: Stack objects (auto-freed at scope end)
 - `scores`, `enemies`: Vector capacity on heap, managed by std::vector
-- `PyInterface::g_values`: Global map, destroyed at program exit
+- `PyInterface::g_values()`: Accessor to construct-on-first-use global registry, destroyed at program exit
 
 **Key Decision: Why Explicit Configuration?**
 - Supports multiple Python deployment models (bundled, system, zip)
@@ -713,26 +713,22 @@ Step 1: Verify element type is Struct
 
 Step 2: Allocate memory for new struct
         const StructInfo *si = static_cast<StructInfo*>(vinfo->element_meta);
-        size_t elem_size = calculate_struct_size(si);
-        void *new_elem = malloc(elem_size);
+        size_t elem_size = si->size;
+        void *new_elem = operator new(elem_size);
 
 Step 3: Initialize with defaults
-        new_elem should be zero-initialized for:
-        - Int fields: 0
-        - Float fields: 0.0
-        - Bool fields: FALSE_BYTE
-        - String fields: empty string (requires placement-new)
-        - Struct fields: recursively initialized
-        
-        for each field in si->fields:
-            if field.type == String:
-                new (&field_at_offset) std::string();  // Placement-new!
+        if (si->construct_fn) {
+            si->construct_fn(new_elem);    // full object construction
+        } else {
+            memset(new_elem, 0, elem_size); // defensive fallback
+        }
 
 Step 4: Append to vector
         bool ok = bound->append_from_cpp(new_elem);
 
 Step 5: Clean up and return
-        free(new_elem);  // Vector made its own copy
+    if (si->destruct_fn) si->destruct_fn(new_elem);
+    operator delete(new_elem);  // Vector made its own copy
         return StructProxy_New(new BoundStruct(...));
 
 Output: StructProxy (proxy wrapping newly appended element)

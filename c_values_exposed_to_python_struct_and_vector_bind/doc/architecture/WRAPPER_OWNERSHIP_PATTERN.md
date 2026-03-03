@@ -84,60 +84,60 @@ StructProxy_dealloc() {
 ┌──────────────────────────────────────────────────────────────────┐
 │ C++ Heap (main.cpp)                                              │
 ├──────────────────────────────────────────────────────────────────┤
-│                                                                   │
+│                                                                  │
 │  Player player = {100, 5.5f};    ◄─── Owned by C++ code          │
 │  vector<Enemy> enemies = {...};  ◄─── Stack/global lifetime      │
 │  vector<vector<int>> grid = {...};                               │
-│                                                                   │
+│                                                                  │
 │ (These objects live as long as the program runs)                 │
 └──────────────────────────────────────────────────────────────────┘
                               ▲
                               │ Raw pointers to C++ data
                               │
 ┌─────────────────────────────┴────────────────────────────────────┐
-│ PyInterface::g_values (Static Map, Program Lifetime)             │
-├────────────────────────────────────────────────────────────────┤
+│ PyInterface::g_values() (Singleton Registry, Program Lifetime)   │
+├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│ "player" → unique_ptr<BoundStruct>                              │
-│    ├─ name: "player"                                            │
-│    ├─ m_instance: (pointer to &player C++ object) ──┐           │
-│    └─ m_info: PlayerInfo metadata                    │           │
-│                                                      │           │
-│ "enemies" → unique_ptr<BoundVector>                 │           │
-│    ├─ name: "enemies"                               │           │
-│    ├─ m_vec_ptr: (pointer to &enemies C++ object)──┼─┐         │
-│    └─ m_info: VectorInfo metadata                   │ │         │
-│                                                      │ │         │
-│ (Owned by unique_ptr for entire program)            │ │         │
-└──────────────────────────────────┬───────────────────┼─┼────────┘
-                                   │                   │ │
-                  ┌────────────────┬┼─┐    ┌──────────┘ │
-                  │                │ │    │            │
-                  │ Wrapper Policy:│ │    │            │
-                  │ Copy the       │ │    │            │
-                  │ BoundValue,    │ │    │            │
-                  │ NOT direct     │ │    │            │
-                  │ pointer        │ │    │            │
-                  │                │ │    │            │
-    ┌─────────────▼───┐  ┌────────▼─▼──┐ │
-    │ Wrapper Copy 1  │  │ Wrapper Copy 2│ │     (Multiple copies
-    │ (Stack locals)  │  │ (Stack locals)│ │      can exist safely)
-    ├─────────────────┤  ├───────────────┤ │
-    │ BoundStruct {   │  │ BoundStruct { │ │
+│ "player" → unique_ptr<BoundStruct>                               │
+│    ├─ name: "player"                                             │
+│    ├─ m_instance: (pointer to &player C++ object) ────┐          │
+│    └─ m_info: PlayerInfo metadata                     │          │
+│                                                       │          │
+│ "enemies" → unique_ptr<BoundVector>                   │          │
+│    ├─ name: "enemies"                                 │          │
+│    ├─ m_vec_ptr: (pointer to &enemies C++ object)─  ──┼─┐        │
+│    └─ m_info: VectorInfo metadata                     │ │        │
+│                                                       │ │        │
+│ (Owned by unique_ptr for entire program)              │ │        │
+└───────────────────────────────────┬─────────────────  ┼─┼────────┘
+                                    │                   │ │
+                  ┌─────────────────┼─┐     ┌───────────┘ │
+                  │                 │ │     │             │
+                  │ Wrapper Policy: │ │     │             │
+                  │ Copy the        │ │     │             │
+                  │ BoundValue,     │ │     │             │
+                  │ NOT direct      │ │     │             │
+                  │ pointer         │ │     │             │
+                  │                 │ │     │             │
+    ┌─────────────▼───┐  ┌──────────▼─▼───┐ │
+    │ Wrapper Copy 1  │  │ Wrapper Copy 2 │ │     (Multiple copies
+    │ (Stack locals)  │  │ (Stack locals) │ │      can exist safely)
+    ├─────────────────┤  ├────────────────┤ │
+    │ BoundStruct {   │  │ BoundStruct {  │ │
     │  name: "player" │  │  name: "player"│ │
-    │  instance: ─────┼──┼─► &player ◄───┼─┘     All point to SAME
+    │  instance: ─────┼──┼─► &player ◄────┼─┘     All point to SAME
     │  info: PlayerInfo  │  info: PlayerInfo       C++ player
-    │ }               │  │ }             │
-    └────────┬────────┘  └────────┬──────┘
+    │ }               │  │ }              │
+    └────────┬────────┘  └────────┬───────┘
              │                    │
     ┌────────▼──────────┐ ┌───────▼──────────┐
     │ Python Proxy 1    │ │ Python Proxy 2   │
     │ (Owns wrapper 1)  │ │ (Owns wrapper 2) │
     ├───────────────────┤ ├──────────────────┤
     │ bound: wrapper1 ──┼─┘ bound: wrapper2 ─┼─┐
-    └───────────────────┘                     │
-                                              │
-                            When GC'd:        │
+    └───────────────────┘                      │
+                                               │
+                            When GC'd:         │
                             delete wrapper2 ─┤─┘
                             (wrapper dies,
                              C++ data lives)

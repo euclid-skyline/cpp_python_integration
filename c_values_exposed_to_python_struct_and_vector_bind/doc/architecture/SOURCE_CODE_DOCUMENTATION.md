@@ -138,8 +138,9 @@ Core flow:
 **Key sections, functions, and variables:**
 
 **Helper Functions:**
-- `calculate_struct_size(const StructInfo *sinfo)`
-  - Computes struct byte size based on metadata. Used for default struct allocation in vectors.
+- Metadata-driven struct allocation in `VectorProxy_append_new()`
+  - Uses `StructInfo::size` (`sizeof(T)` from registration) and `construct_fn` / `destruct_fn`.
+  - Replaces legacy runtime size estimation and manual field-by-field initialization.
 
 **CppProxy:**
 - `cppproxy_getattro()` and `cppproxy_setattro()`
@@ -197,8 +198,8 @@ Core flow:
   - Determine how to bind a type.
 - `get_struct_info<T>()`, `get_vector_info<T>()`
   - Provide reflection metadata for user types.
-- `PyInterface::g_values`
-  - Global registry of bound values.
+- `PyInterface::g_values()`
+  - Accessor for the global registry of bound values (construct-on-first-use singleton).
 - `PyInterface::bind()`
   - Registers scalars, structs, or vectors.
 - `PyInterface::get_value_raw()`
@@ -260,7 +261,7 @@ The system implements two critical safety patterns that eliminate memory corrupt
 **Problem Prevented:** Double-free when multiple Python proxies reference same C++ object.
 
 **Implementation:**
-- Registry (`PyInterface::g_values`) stores master wrappers
+- Registry (`PyInterface::g_values()`) stores master wrappers
 - Each proxy gets **copy** of wrapper via copy constructor
 - Wrapper contains pointers to shared data (void *m_instance)
 - Cleanup deletes wrapper copy, not underlying C++ data

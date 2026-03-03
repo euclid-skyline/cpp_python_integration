@@ -34,6 +34,8 @@
 
 This documentation set provides a comprehensive understanding of the C++/Python integration project, from high-level architecture to implementation details. The documents are designed to be read in a specific order based on your learning goals.
 
+This index and the linked architecture documents are updated to reflect the Gemini review fixes already implemented in code (Issues 1-7), including metadata-based struct construction/destruction, `sizeof`-based sizing, wrapper failure cleanup, ODR-safe registration, nested parent tracking for field proxies, and the `PyInterface::g_values()` construct-on-first-use registry model.
+
 ---
 
 [Back to Table of Contents](#table-of-contents)

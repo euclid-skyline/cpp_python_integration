@@ -93,22 +93,24 @@ This document provides authoritative documentation of all ownership semantics in
 // In value_interface.hpp
 class PyInterface {
 public:
-    static std::map<std::string, std::unique_ptr<BoundValue>> g_values;
+  static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& g_values();
     
     // Binding stores data with unique_ptr (owns the wrapper)
     static void bind(const std::string &name, T &value);
+private:
+  static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& get_values() {
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>> values;
+    return values;
+  }
 };
-
-// Instantiation: g_values owns BoundValue pointers via unique_ptr
-std::map<std::string, std::unique_ptr<BoundValue>> PyInterface::g_values;
 ```
 
 ### Ownership Characteristics
 
 | Aspect | Detail |
 |--------|--------|
-| **Holder** | PyInterface static member |
-| **Container** | std::map with unique_ptr values |
+| **Holder** | Function-local static map, exposed through `PyInterface::g_values()` |
+| **Container** | std::unordered_map with unique_ptr values |
 | **Ownership** | Registry OWNS BoundValue metadata objects |
 | **Lifetime** | Entire program (never deleted) |
 | **Non-Ownership** | Registry does NOT own C++ data being wrapped |

@@ -486,14 +486,20 @@ static void bind(const std::string &name, T &variable) {
 ```cpp
 class PyInterface {
     // Single source of truth for all bound variables
-    static inline std::unordered_map<
-        std::string,
-        std::unique_ptr<BoundValue>
-    > g_values;
+    // Exposed as accessor to avoid static initialization order issues.
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& g_values() {
+        return get_values();
+    }
+private:
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>>& get_values() {
+        static std::unordered_map<std::string, std::unique_ptr<BoundValue>> values;
+        return values;
+    }
     
     static BoundValue* get_value_raw(const std::string &name) {
-        auto it = g_values.find(name);
-        return it != g_values.end() ? it->second.get() : nullptr;
+        auto &values = g_values();
+        auto it = values.find(name);
+        return it != values.end() ? it->second.get() : nullptr;
     }
 };
 ```

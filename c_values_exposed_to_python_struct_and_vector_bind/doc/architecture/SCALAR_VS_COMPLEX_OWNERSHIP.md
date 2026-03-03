@@ -54,18 +54,19 @@ Issue #18 (Double-Free Risk in Root Proxy Attribute Access) revealed a critical 
 
 **The Registry (`PyInterface::g_values`)** stores bound C++ variables:
 ```cpp
-std::map<std::string, BoundValue*> PyInterface::g_values;
+auto &registry = PyInterface::g_values();
+// type: std::unordered_map<std::string, std::unique_ptr<BoundValue>>
 
 // When binding:
 PyInterface::bind("player", player);
-// Result: g_values["player"] = BoundStruct* (holds &player metadata)
+// Result: registry["player"] = unique_ptr<BoundStruct> (holds &player metadata)
 
 PyInterface::bind("scores", scores);
-// Result: g_values["scores"] = BoundVector* (holds &scores metadata)
+// Result: registry["scores"] = unique_ptr<BoundVector> (holds &scores metadata)
 
 int x = 10;
 PyInterface::bind("x", x);
-// Result: g_values["x"] = PyBoundInt* (holds &x metadata)
+// Result: registry["x"] = unique_ptr<PyBoundInt> (holds &x metadata)
 ```
 
 **The Access Path** converts registry entries to Python objects:
