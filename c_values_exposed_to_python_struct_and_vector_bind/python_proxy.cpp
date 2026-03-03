@@ -332,7 +332,7 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
         // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
         // This ensures the nested struct proxy can recalculate its address if parent moves
         BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
-        PyObject *result = StructProxy_New(bstruct);
+        PyObject *result = StructProxy_New(bstruct, self); // Issue 5: Pass parent to track context
         if (!result)
         {
             delete bstruct;
@@ -346,7 +346,7 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
         // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
         // This ensures the nested vector proxy can recalculate its address if parent moves
         BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
-        PyObject *result = VectorProxy_New(bvec);
+        PyObject *result = VectorProxy_New(bvec, self); // Issue 5: Pass parent to track context
         if (!result)
         {
             delete bvec;
@@ -515,6 +515,9 @@ PyTypeObject StructProxyType = {
 
 // ------------------------------------------------------------
 // Create a new StructProxy instance
+// Issue 5 (Gemini Review): parent parameter enables tracking nested field proxies
+// Default parent=nullptr for top-level proxies from CppProxy
+// Pass parent=self for field proxies from StructProxy/VectorProxy
 // ------------------------------------------------------------
 PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent)
 {
@@ -1235,6 +1238,9 @@ PyTypeObject VectorProxyType = {
 };
 // ------------------------------------------------------------
 // Create a new VectorProxy instance
+// Issue 5 (Gemini Review): parent parameter enables tracking nested field proxies
+// Default parent=nullptr for top-level proxies from CppProxy
+// Pass parent=self for field proxies from StructProxy/VectorProxy
 // ------------------------------------------------------------
 PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent)
 {
