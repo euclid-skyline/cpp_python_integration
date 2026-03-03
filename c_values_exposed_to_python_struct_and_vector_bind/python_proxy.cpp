@@ -203,7 +203,7 @@ PyTypeObject CppProxyType = {
 // ============================================================================
 // Thread-safe creation of CppProxy singleton instance.
 // Issue 34: Thread Safety - Protected by mutex to prevent race conditions during
-//           PyType_Ready() calls from multiple threads.
+//           singleton instance creation from multiple threads.
 // Issue 39: Reference Counting Semantics:
 //   - Fast path (already initialized): Py_INCREF and return existing instance
 //     Rationale: Return a new reference to the caller
@@ -224,11 +224,6 @@ PyObject *create_cpp_proxy()
         Py_INCREF(g_cpp_proxy_instance);
         return g_cpp_proxy_instance;
     }
-
-    // [C++20 FIX] Type readiness is now centralized in module init,
-    // but we keep this for backward compatibility.
-    if (PyType_Ready(&CppProxyType) < 0)
-        return nullptr;
 
     // ISSUE 39: PyObject_New() returns a new reference (refcount=1)
     // No additional Py_INCREF needed for first initialization
