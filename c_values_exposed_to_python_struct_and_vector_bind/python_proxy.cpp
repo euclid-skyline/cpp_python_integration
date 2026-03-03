@@ -57,9 +57,9 @@ static PyObject *cppproxy_getattro(PyObject *, PyObject *attr)
     {
         // Build list of available variables for better error message
         std::string available_vars;
-        size_t count = PyInterface::g_values.size();
+        size_t count = PyInterface::g_values().size();
         size_t i = 0;
-        for (const auto &pair : PyInterface::g_values)
+        for (const auto &pair : PyInterface::g_values())
         {
             available_vars += pair.first;
             if (++i < count)

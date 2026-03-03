@@ -9,18 +9,22 @@
 
 // ------------------------------------------------------------
 // Retrieve raw BoundValue*
+// Issue 7 (Gemini Review): Access through get_values() Meyers Singleton
 // ------------------------------------------------------------
 BoundValue *PyInterface::get_value_raw(const std::string &name)
 {
-    auto it = g_values.find(name);
-    return (it != g_values.end()) ? it->second.get() : nullptr;
+    auto &values = get_values(); // Access through private singleton function
+    auto it = values.find(name);
+    return (it != values.end()) ? it->second.get() : nullptr;
 }
 
+// Issue 7 (Gemini Review): Access through get_values() Meyers Singleton
 // ---------------------------------------------------------
 PyBoundValue *PyInterface::get_value(const std::string &name)
 {
-    auto it = g_values.find(name);
-    return (it != g_values.end())
+    auto &values = get_values(); // Access through private singleton function
+    auto it = values.find(name);
+    return (it != values.end())
                ? dynamic_cast<PyBoundValue *>(it->second.get())
                : nullptr;
 }

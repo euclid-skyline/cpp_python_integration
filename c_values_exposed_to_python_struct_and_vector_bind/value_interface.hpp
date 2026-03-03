@@ -57,37 +57,50 @@ const VectorInfo *get_vector_info()
 
 class PyInterface
 {
+private:
+    // Issue 7 (Gemini Review): Meyers Singleton pattern to guarantee initialization on first use
+    // regardless of static initialization order across translation units
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>> &get_values()
+    {
+        static std::unordered_map<std::string, std::unique_ptr<BoundValue>> values;
+        return values;
+    }
+
 public:
-    // [C++20 FIX] inline static allowed in C++17+, idiomatic in C++20
-    static inline std::unordered_map<std::string, std::unique_ptr<BoundValue>> g_values;
+    // Issue 7 (Gemini Review): Public accessor for backward compatibility
+    // Returns reference to the Meyers Singleton to avoid static initialization order fiasco
+    static std::unordered_map<std::string, std::unique_ptr<BoundValue>> &g_values()
+    {
+        return get_values();
+    }
 
     template <typename T>
     static void bind(const std::string &name, T &variable)
     {
         if constexpr (std::is_same_v<T, int>)
         {
-            g_values[name] = std::make_unique<PyBoundInt>(name, variable);
+            get_values()[name] = std::make_unique<PyBoundInt>(name, variable);
         }
         else if constexpr (std::is_same_v<T, float>)
         {
-            g_values[name] = std::make_unique<PyBoundFloat>(name, variable);
+            get_values()[name] = std::make_unique<PyBoundFloat>(name, variable);
         }
         else if constexpr (std::is_same_v<T, ByteBool>)
         {
-            g_values[name] = std::make_unique<PyBoundBool>(name, variable);
+            get_values()[name] = std::make_unique<PyBoundBool>(name, variable);
         }
         else if constexpr (std::is_same_v<T, std::string>)
         {
-            g_values[name] = std::make_unique<PyBoundString>(name, variable);
+            get_values()[name] = std::make_unique<PyBoundString>(name, variable);
         }
         else if constexpr (is_reflected_struct<T>::value)
         {
-            g_values[name] = std::make_unique<BoundStruct>(name, &variable, get_struct_info<T>());
+            get_values()[name] = std::make_unique<BoundStruct>(name, &variable, get_struct_info<T>());
         }
         else if constexpr (is_std_vector<T>::value)
         {
             using Elem = typename T::value_type;
-            g_values[name] = std::make_unique<BoundVector>(name, &variable, get_vector_info<Elem>());
+            get_values()[name] = std::make_unique<BoundVector>(name, &variable, get_vector_info<Elem>());
         }
         else
         {

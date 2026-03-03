@@ -15,9 +15,9 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
     {
         // Build list of available variables for better error message
         std::string available_vars;
-        size_t count = PyInterface::g_values.size();
+        size_t count = PyInterface::g_values().size();
         size_t i = 0;
-        for (const auto &pair : PyInterface::g_values)
+        for (const auto &pair : PyInterface::g_values())
         {
             available_vars += pair.first;
             if (++i < count)
@@ -98,9 +98,9 @@ static int cpp_module_setattr(PyObject *module, PyObject *name, PyObject *value)
     {
         // Build list of available variables for better error message
         std::string available_vars;
-        size_t count = PyInterface::g_values.size();
+        size_t count = PyInterface::g_values().size();
         size_t i = 0;
-        for (const auto &pair : PyInterface::g_values)
+        for (const auto &pair : PyInterface::g_values())
         {
             available_vars += pair.first;
             if (++i < count)
