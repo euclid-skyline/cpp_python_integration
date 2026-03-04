@@ -500,7 +500,17 @@ static Py_ssize_t StructProxy_len(PyObject *self)
     if (!proxy->bound || !proxy->bound->info())
         return 0;
 
-    return static_cast<Py_ssize_t>(proxy->bound->info()->fields.size());
+    std::size_t fieldCount = proxy->bound->info()->fields.size();
+    // We must guard size_t -> Py_ssize_t conversions: if a container size exceeds
+    // PY_SSIZE_T_MAX, narrowing would wrap/truncate and Python APIs would observe
+    // a negative or otherwise corrupted length/index value.
+    if (fieldCount > static_cast<std::size_t>(PY_SSIZE_T_MAX))
+    {
+        PyErr_SetString(PyExc_OverflowError, "Container has too many fields");
+        return -1;
+    }
+
+    return static_cast<Py_ssize_t>(fieldCount);
 }
 
 // ------------------------------------------------------------
@@ -632,7 +642,18 @@ static Py_ssize_t VectorProxy_len(PyObject *self)
     VectorProxyObject *proxy = (VectorProxyObject *)self;
     if (!proxy || !proxy->bound)
         return 0;
-    return proxy->bound->size();
+
+    std::size_t vectorSize = proxy->bound->size();
+    // We must guard size_t -> Py_ssize_t conversions: if a container size exceeds
+    // PY_SSIZE_T_MAX, narrowing would wrap/truncate and Python APIs would observe
+    // a negative or otherwise corrupted length/index value.
+    if (vectorSize > static_cast<std::size_t>(PY_SSIZE_T_MAX))
+    {
+        PyErr_SetString(PyExc_OverflowError, "Vector is too large");
+        return -1;
+    }
+
+    return static_cast<Py_ssize_t>(vectorSize);
 }
 
 // ------------------------------------------------------------
@@ -648,7 +669,16 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
         return nullptr;
     }
 
-    Py_ssize_t size = static_cast<Py_ssize_t>(proxy->bound->size());
+    std::size_t vectorSize = proxy->bound->size();
+    // We must guard size_t -> Py_ssize_t conversions: if a container size exceeds
+    // PY_SSIZE_T_MAX, narrowing would wrap/truncate and Python APIs would observe
+    // a negative or otherwise corrupted length/index value.
+    if (vectorSize > static_cast<std::size_t>(PY_SSIZE_T_MAX))
+    {
+        PyErr_SetString(PyExc_OverflowError, "Vector is too large for Python indexing");
+        return nullptr;
+    }
+    Py_ssize_t size = static_cast<Py_ssize_t>(vectorSize);
 
     // Support negative indexing
     if (index < 0)
@@ -750,7 +780,16 @@ static int VectorProxy_setitem(PyObject *self, Py_ssize_t index, PyObject *value
         return -1;
     }
 
-    Py_ssize_t size = static_cast<Py_ssize_t>(proxy->bound->size());
+    std::size_t vectorSize = proxy->bound->size();
+    // We must guard size_t -> Py_ssize_t conversions: if a container size exceeds
+    // PY_SSIZE_T_MAX, narrowing would wrap/truncate and Python APIs would observe
+    // a negative or otherwise corrupted length/index value.
+    if (vectorSize > static_cast<std::size_t>(PY_SSIZE_T_MAX))
+    {
+        PyErr_SetString(PyExc_OverflowError, "Vector is too large for Python indexing");
+        return -1;
+    }
+    Py_ssize_t size = static_cast<Py_ssize_t>(vectorSize);
 
     // Support negative indexing
     if (index < 0)
@@ -1217,6 +1256,14 @@ static PyObject *VectorIterator_next(PyObject *self)
     if (it->index >= proxy->bound->size())
     {
         PyErr_SetNone(PyExc_StopIteration);
+        return nullptr;
+    }
+
+    // We must guard size_t -> Py_ssize_t conversions: if iterator index exceeds
+    // PY_SSIZE_T_MAX, narrowing would wrap/truncate and break Python index semantics.
+    if (it->index > static_cast<std::size_t>(PY_SSIZE_T_MAX))
+    {
+        PyErr_SetString(PyExc_OverflowError, "Vector index exceeds Python index range");
         return nullptr;
     }
 
