@@ -11,6 +11,7 @@
   - [Pattern 5: Thread-Safe Singleton with Double-Checked Locking (Issue #34)](#pattern-5-thread-safe-singleton-with-double-checked-locking-issue-34)
   - [Pattern 6: Python Reference Counting Semantics (Issue #39)](#pattern-6-python-reference-counting-semantics-issue-39)
   - [Pattern 7: Parent-Child Proxy Lifetime Management (Issue #48)](#pattern-7-parent-child-proxy-lifetime-management-issue-48)
+  - [Pattern 8: Garbage Collection Integration (Issues #51, #58)](#pattern-8-garbage-collection-integration-issues-51-58)
 - [II. Design Trade-offs and Decisions](#ii-design-trade-offs-and-decisions)
   - [Trade-off 1: Pointer Arithmetic vs. Container Wrapper](#trade-off-1-pointer-arithmetic-vs-container-wrapper)
   - [Trade-off 2: Linear Field Lookup vs. Hash Map](#trade-off-2-linear-field-lookup-vs-hash-map)
@@ -543,13 +544,16 @@ PyObject *create_cpp_proxy() {
         Py_INCREF(g_instance);  // ✓ Increment refcount
         return g_instance;       // Caller owns this reference
     }
-    g_instance = PyObject_New(...);  // refcount=1
+    g_instance = PyObject_New(...);  // refcount=1 (CppProxy doesn't need GC)
     return g_instance;  // Caller owns this reference
 }
 
+// StructProxy, VectorProxy, VectorIterator use GC-enabled allocation:
 PyObject *StructProxy_New(BoundStruct *bound) {
-    auto *self = PyObject_New(StructProxyObject, &StructProxyType);
+    auto *self = PyObject_GC_New(StructProxyObject, &StructProxyType);
     self->bound = bound;
+    self->parent_proxy = nullptr;  // Initialize parent tracking
+    PyObject_GC_Track((PyObject*)self);  // Register with GC
     return (PyObject*)self;  // refcount=1, caller must Py_DECREF
 }
 ```
@@ -607,10 +611,11 @@ create_cpp_proxy() called (subsequent)
           └─→ Singleton keeps instance alive
 ```
 
-**Destructor Responsibilities:**
+**Destructor Responsibilities (GC Protocol):**
 
 ```cpp
 static void StructProxy_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);  // Unregister from GC first
     StructProxyObject *proxy = (StructProxyObject*)self;
     
     delete proxy->bound;  // Free owned C++ wrapper
@@ -618,8 +623,23 @@ static void StructProxy_dealloc(PyObject *self) {
     Py_XDECREF(proxy->parent_proxy);  // Release owned reference
     // Py_XDECREF is NULL-safe version of Py_DECREF
     
-    Py_TYPE(self)->tp_free(self);  // Free Python object
+    PyObject_GC_Del(self);  // GC-aware deallocation
 }
+
+// GC traverse function (visits owned references)
+static int StructProxy_traverse(PyObject *self, visitproc visit, void *arg) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    Py_VISIT(proxy->parent_proxy);  // Mark parent as reachable
+    return 0;
+}
+
+// GC clear function (breaks cycles)
+static int StructProxy_clear(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    Py_CLEAR(proxy->parent_proxy);  // Clear parent reference
+    return 0;
+}
+```
 ```
 
 **Trade-offs:**
@@ -665,20 +685,22 @@ typedef struct {
 PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
     // ... create element wrapper ...
     
-    StructProxyObject *proxy = PyObject_New(StructProxyObject, &StructProxyType);
+    StructProxyObject *proxy = PyObject_GC_New(StructProxyObject, &StructProxyType);
     proxy->bound = element_wrapper;
     
     proxy->parent_proxy = self;  // Store parent reference
     Py_INCREF(self);             // ✓ Keep parent alive
     
+    PyObject_GC_Track((PyObject*)proxy);  // Register with GC
     return (PyObject*)proxy;
 }
 
 static void StructProxy_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);            // Unregister from GC
     StructProxyObject *proxy = (StructProxyObject*)self;
     delete proxy->bound;
-    Py_XDECREF(proxy->parent_proxy);  // ✓ Release parent
-    Py_TYPE(self)->tp_free(self);
+    Py_XDECREF(proxy->parent_proxy);      // ✓ Release parent
+    PyObject_GC_Del(self);                // GC-aware deallocation
 }
 ```
 
@@ -763,6 +785,144 @@ State 5: Element Destroyed
 - 2 CPU cycles per creation/destruction (Py_INCREF/DECREF)
 
 **See:** [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) Section 8: Parent-Child Proxy Lifetime
+
+---
+
+### Pattern 8: Garbage Collection Integration (Issues #51, #58)
+
+**Definition:** Proxy types implement Python's GC protocol to enable detection and collection of circular references.
+
+**The Problem:**
+
+Without GC integration, cycles in object graphs cause memory leaks since reference counting alone cannot detect them:
+
+```python
+# Circular reference scenario:
+class PythonWrapper:
+    def __init__(self, cpp_obj):
+        self.cpp_obj = cpp_obj       # Python → StructProxy
+        cpp_obj.wrapper = self       # StructProxy → Python (via __setattr__)
+
+enemies = cpp.enemies
+wrapper = PythonWrapper(enemies[0])  # Cycle: StructProxy ↔ PythonWrapper
+
+del enemies
+del wrapper
+# Without GC: Memory leak! (both objects have refcount > 0 due to cycle)
+# With GC: Detected and collected in next GC cycle
+```
+
+**The Solution: Full GC Protocol Implementation**
+
+**1. Type Flags:**
+```cpp
+PyTypeObject StructProxyType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "cpp.StructProxy",
+    .tp_basicsize = sizeof(StructProxyObject),
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,  // Enable GC
+    .tp_traverse = (traverseproc)StructProxy_traverse,     // Visit refs
+    .tp_clear = (inquiry)StructProxy_clear,                // Break cycles
+    .tp_dealloc = (destructor)StructProxy_dealloc,
+    // ...
+};
+```
+
+**2. GC-Aware Allocation:**
+```cpp
+PyObject *StructProxy_New(BoundStruct *bound) {
+    // Use GC allocator (adds GC header to object)
+    StructProxyObject *self = PyObject_GC_New(StructProxyObject, &StructProxyType);
+    self->bound = bound;
+    self->parent_proxy = nullptr;
+    
+    // Register with GC tracking system
+    PyObject_GC_Track((PyObject*)self);
+    return (PyObject*)self;
+}
+```
+
+**3. Traverse Function (Mark Reachable Objects):**
+```cpp
+static int StructProxy_traverse(PyObject *self, visitproc visit, void *arg) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    // Tell GC about all owned Python references
+    Py_VISIT(proxy->parent_proxy);  // Macro: if (obj) visit(obj, arg)
+    return 0;
+}
+```
+
+**4. Clear Function (Break Circular References):**
+```cpp
+static int StructProxy_clear(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    // Clear owned Python references to break cycles
+    Py_CLEAR(proxy->parent_proxy);  // Macro: DECREF + set NULL
+    return 0;
+}
+```
+
+**5. GC-Aware Deallocation:**
+```cpp
+static void StructProxy_dealloc(PyObject *self) {
+    // MUST untrack before accessing object members
+    PyObject_GC_UnTrack(self);
+    
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    delete proxy->bound;              // Free C++ wrapper
+    Py_XDECREF(proxy->parent_proxy);  // Release Python refs
+    
+    // Use GC deallocation (handles GC header)
+    PyObject_GC_Del(self);
+}
+```
+
+**GC Lifecycle:**
+
+```
+1. Object Creation:
+   PyObject_GC_New()         → Allocate object with GC header
+   /* fields initialization */
+   PyObject_GC_Track()       → Register with GC
+
+2. GC Mark-and-Sweep Cycle (periodic):
+   tp_traverse called        → Mark all reachable objects
+   Unreachable objects found → Call tp_clear to break cycles
+   Zero refcount achieved    → Call tp_dealloc
+
+3. Object Destruction:
+   tp_dealloc called
+   PyObject_GC_UnTrack()     → Unregister from GC
+   /* cleanup */
+   PyObject_GC_Del()         → Free object with GC header
+```
+
+**Types Requiring GC Protocol:**
+
+| Proxy Type | Python Refs Held | GC Needed? |
+|------------|------------------|------------|
+| CppProxyType | None | ❌ No (no Python refs) |
+| StructProxyType | parent_proxy | ✅ Yes (Issue #51) |
+| VectorProxyType | parent_proxy | ✅ Yes (Issue #51) |
+| VectorIteratorType | vector | ✅ Yes (Issue #58) |
+
+**Trade-offs:**
+
+| Aspect | Without GC | With GC |
+|--------|------------|---------|
+| Memory per object | ~40 bytes | ~56 bytes (+16 GC header) |
+| Circular refs | ❌ Leak | ✅ Collected |
+| CPU overhead | None | Periodic GC cycles (~ms) |
+| Complexity | Low | Medium (5 functions) |
+
+**Performance Impact:**
+- **Memory:** +16 bytes per GC-tracked object
+- **CPU:** Minimal – GC runs periodically (typically < 1% overhead)
+- **Benefit:** Eliminates memory leaks from circular references
+
+**See Also:**
+- [GC_REQUIREMENTS_ANALYSIS.md](GC_REQUIREMENTS_ANALYSIS.md) - Detailed GC requirements and implementation
+- [Python GC Documentation](https://docs.python.org/3/c-api/gcsupport.html) - Official Python GC protocol reference
 
 ---
 

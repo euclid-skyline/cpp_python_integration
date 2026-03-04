@@ -51,6 +51,7 @@
     - [Pattern 3: Thread-Safe Singleton Initialization (Issue #34)](#pattern-3-thread-safe-singleton-initialization-issue-34)
     - [Pattern 4: Python Reference Counting Semantics (Issue #39)](#pattern-4-python-reference-counting-semantics-issue-39)
     - [Pattern 5: Parent-Child Proxy Lifetime Management (Issue #48)](#pattern-5-parent-child-proxy-lifetime-management-issue-48)
+    - [Pattern 6: Garbage Collection Integration (Issue 51)](#pattern-6-garbage-collection-integration-issue-51)
 - [VII. Summary: Data Flow Example](#vii-summary-data-flow-example)
   - [Complete Example Walkthrough: `cpp.enemies[0].health = 50`](#complete-example-walkthrough-cppenemies0health--50)
   - [Memory Map at Execution](#memory-map-at-execution)
@@ -767,10 +768,11 @@ grid.append_new()  # Appends empty vector<int>()
 **Implementation:**
 ```cpp
 PyObject *VectorProxy_iter(PyObject *self) {
-    auto *it = PyObject_New(VectorIteratorObject, &VectorIteratorType);
+    auto *it = PyObject_GC_New(VectorIteratorObject, &VectorIteratorType);
     it->vector = (VectorProxy*)self;
     it->index = 0;
     Py_INCREF((PyObject*)self);  // Keep vector alive for duration of iteration
+    PyObject_GC_Track((PyObject*)it);  // Register with GC for cycle detection
     return (PyObject*)it;
 }
 ```
@@ -1164,13 +1166,18 @@ class BoundVector {
 **Python Layer Allocates Proxies:**
 ```cpp
 // python_proxy.cpp
-StructProxy *proxy = PyObject_New(StructProxy, &StructProxyType);
+// Note: StructProxy, VectorProxy, VectorIterator use GC-aware allocation
+StructProxy *proxy = PyObject_GC_New(StructProxy, &StructProxyType);
 proxy->bound = new BoundStruct(...);  // ← Allocated in Python extension
+proxy->parent_proxy = nullptr;        // Initialize parent tracking
+PyObject_GC_Track((PyObject*)proxy);  // Register with GC
 
 // When proxy is deleted:
 StructProxy_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);        // Unregister from GC
     delete ((StructProxy*)self)->bound;
-    PyObject_Del(self);
+    Py_XDECREF(((StructProxy*)self)->parent_proxy);  // Release parent ref
+    PyObject_GC_Del(self);            // GC-aware deallocation
 }
 ```
 
@@ -1201,27 +1208,31 @@ delete proxy1->bound;  // Deletes BoundStruct
 delete proxy2->bound;  // ❌ DOUBLE-FREE! (same pointer)
 ```
 
-**Solution: Proxy-Owned Wrapper Copies**
+**Solution: Proxy-Owned Wrapper Copies (GC-Enabled)**
 ```cpp
 // python_proxy.cpp
 StructProxy *StructProxy_New(BoundStruct *bound) {
-    StructProxy *proxy = PyObject_New(StructProxy, &StructProxyType);
+    StructProxy *proxy = PyObject_GC_New(StructProxy, &StructProxyType);
     
     // Create COPY of wrapper, pointing to SAME underlying data
     proxy->bound = new BoundStruct(*bound);  // ✓ Copy wrapper
+    proxy->parent_proxy = nullptr;           // Initialize parent tracking
     
     // Wrapper contains:
     //   void *m_instance (points to actual struct in C++)
     //   StructInfo *m_info (metadata pointer)
     // Both copied, but m_instance still points to original data
     
+    PyObject_GC_Track((PyObject*)proxy);     // Register with GC
     return proxy;
 }
 
 void StructProxy_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);               // Unregister from GC first
     StructProxy *proxy = (StructProxy*)self;
-    delete proxy->bound;  // ✓ Deletes THIS proxy's wrapper copy
-    PyObject_Del(self);   // ✓ No double-free possible
+    delete proxy->bound;                     // ✓ Deletes THIS proxy's wrapper copy
+    Py_XDECREF(proxy->parent_proxy);         // Release parent reference
+    PyObject_GC_Del(self);                   // ✓ GC-aware deallocation, no double-free
 }
 ```
 
@@ -1671,13 +1682,26 @@ static void StructProxy_dealloc(PyObject *self) {
     // Free owned C++ wrapper
     delete proxy->bound;
     
-    // ISSUE 48: Release parent reference
+    // ISSUE 48 + Issue 51: Release parent reference
     Py_XDECREF(proxy->parent_proxy);
     // Py_XDECREF is safe for NULL pointers
     // Decrements parent refcount (may trigger parent destruction)
     
-    // Free Python object
-    Py_TYPE(self)->tp_free(self);
+    // Free Python object (GC-aware)
+    PyObject_GC_Del(self);
+}
+
+// GC Protocol Functions (Issue 51)
+static int StructProxy_traverse(PyObject *self, visitproc visit, void *arg) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    Py_VISIT(proxy->parent_proxy);  // Tell GC about parent reference
+    return 0;
+}
+
+static int StructProxy_clear(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    Py_CLEAR(proxy->parent_proxy);  // Break circular references
+    return 0;
 }
 ```
 
@@ -1686,10 +1710,13 @@ static void StructProxy_dealloc(PyObject *self) {
 | Function | Return Type | Refcount Behavior | Caller Must |
 |----------|-------------|-------------------|-------------|
 | `create_cpp_proxy()` | NEW reference | Py_INCREF if existing | Py_DECREF |
-| `StructProxy_New()` | NEW reference | refcount=1 from PyObject_New | Py_DECREF |
-| `VectorProxy_New()` | NEW reference | refcount=1 from PyObject_New | Py_DECREF |
+| `StructProxy_New()` | NEW reference | refcount=1 from PyObject_GC_New + GC tracked | Py_DECREF |
+| `VectorProxy_New()` | NEW reference | refcount=1 from PyObject_GC_New + GC tracked | Py_DECREF |
+| `VectorIterator (iter)` | NEW reference | refcount=1 from PyObject_GC_New + GC tracked | Py_DECREF |
 | `to_python()` | NEW reference | Created from C++ value | Py_DECREF |
 | `parent_proxy` field | OWNED reference | Py_INCREF in constructor | Py_DECREF in dealloc |
+
+**Note:** StructProxy, VectorProxy, and VectorIterator use GC-aware allocation (`PyObject_GC_New`) and implement `tp_traverse`/`tp_clear` for circular reference detection (Issue 51).
 
 ---
 
@@ -1861,6 +1888,138 @@ For complete details, see the dedicated memory safety documentation:
 - [VECTOR_ELEMENT_PROXY_INVALIDATION.md](VECTOR_ELEMENT_PROXY_INVALIDATION.md)
 - [PARENT_TRACKING_IMPLEMENTATION_GUIDE.md](PARENT_TRACKING_IMPLEMENTATION_GUIDE.md)
 - [OWNERSHIP_MODELS_GUIDE.md](OWNERSHIP_MODELS_GUIDE.md) - Complete ownership and thread safety reference
+
+---
+
+### Pattern 6: Garbage Collection Integration (Issue 51)
+
+**Problem:** Proxies hold Python object references (`parent_proxy`, `vector`), creating potential circular references:
+- StructProxy → VectorProxy (parent_proxy)
+- VectorProxy → container → StructProxy (cycle)
+- VectorIterator → VectorProxy → elements
+
+Without GC integration, circular references cause memory leaks since reference counting alone cannot detect cycles.
+
+**The Solution: Python GC Protocol**
+
+All proxy types holding Python references implement the full GC protocol:
+
+**1. Type Flag:**
+```cpp
+PyTypeObject StructProxyType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "cpp.StructProxy",
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,  // Enable GC
+    .tp_traverse = (traverseproc)StructProxy_traverse,    // Visit refs
+    .tp_clear = (inquiry)StructProxy_clear,               // Break cycles
+    .tp_dealloc = (destructor)StructProxy_dealloc,
+    // ...
+};
+```
+
+**2. GC-Aware Allocation:**
+```cpp
+PyObject *StructProxy_New(BoundStruct *bound) {
+    // Use GC allocator instead of PyObject_New
+    StructProxyObject *self = PyObject_GC_New(StructProxyObject, &StructProxyType);
+    self->bound = bound;
+    self->parent_proxy = nullptr;
+    
+    // Register with GC after initialization
+    PyObject_GC_Track((PyObject*)self);
+    return (PyObject*)self;
+}
+```
+
+**3. Traverse Function (Mark Phase):**
+```cpp
+static int StructProxy_traverse(PyObject *self, visitproc visit, void *arg) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    // Tell GC about all owned Python object references
+    Py_VISIT(proxy->parent_proxy);  // Macro handles NULL check
+    return 0;
+}
+```
+
+**4. Clear Function (Cycle Breaking):**
+```cpp
+static int StructProxy_clear(PyObject *self) {
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    // Break circular references by clearing owned refs
+    Py_CLEAR(proxy->parent_proxy);  // Macro: DECREF + set NULL
+    return 0;
+}
+```
+
+**5. GC-Aware Deallocation:**
+```cpp
+static void StructProxy_dealloc(PyObject *self) {
+    // Unregister from GC FIRST (required)
+    PyObject_GC_UnTrack(self);
+    
+    StructProxyObject *proxy = (StructProxyObject*)self;
+    delete proxy->bound;              // Free C++ wrapper
+    Py_XDECREF(proxy->parent_proxy);  // Release Python refs
+    
+    // Use GC deallocator instead of PyObject_Del
+    PyObject_GC_Del(self);
+}
+```
+
+**How GC Works:**
+
+```
+1. Mark Phase:
+   GC calls tp_traverse on all tracked objects
+   → StructProxy_traverse marks parent_proxy as reachable
+   → Traversal visits entire object graph
+
+2. Sweep Phase:
+   Objects not marked = unreachable (garbage)
+   → GC calls tp_clear to break cycles
+   → StructProxy_clear releases parent_proxy
+
+3. Collection:
+   Refcounts drop to zero
+   → tp_dealloc called
+   → Objects freed
+```
+
+**Circular Reference Example:**
+
+```python
+# Create a scenario that would leak without GC:
+class PythonWrapper:
+    def __init__(self, cpp_obj):
+        self.cpp_obj = cpp_obj      # Python → StructProxy
+        cpp_obj.wrapper = self      # StructProxy → Python (via __dict__)
+
+enemies = cpp.enemies
+wrapper = PythonWrapper(enemies[0])  # Cycle created
+
+del enemies
+del wrapper
+# Without GC: Leak! (circular references prevent refcount → 0)
+# With GC: Detected and collected in next GC cycle
+```
+
+**GC Integration Summary:**
+
+| Proxy Type | References Held | GC Support |
+|------------|----------------|------------|
+| CppProxyType | None | Not needed (no Python refs) |
+| StructProxyType | parent_proxy | ✅ Full GC protocol |
+| VectorProxyType | parent_proxy | ✅ Full GC protocol |
+| VectorIteratorType | vector | ✅ Full GC protocol |
+
+**Performance Impact:**
+- **Memory:** +16 bytes per GC-tracked object (GC header overhead)
+- **CPU:** Minimal – GC cycles run periodically, not per-operation
+- **Benefit:** Eliminates memory leaks from circular references
+
+**See Also:**
+- [GC_REQUIREMENTS_ANALYSIS.md](GC_REQUIREMENTS_ANALYSIS.md) - Detailed GC implementation analysis
+- [Python C API Documentation](https://docs.python.org/3/c-api/gcsupport.html) - Official GC protocol reference
 
 ---
 

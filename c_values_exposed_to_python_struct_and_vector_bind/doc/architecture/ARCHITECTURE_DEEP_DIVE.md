@@ -706,10 +706,11 @@ PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
 // Python calls: iter(enemies_proxy)
 
 PyObject *VectorProxy_iter(PyObject *self) {
-    auto *it = PyObject_New(VectorIteratorObject, &VectorIteratorType);
+    auto *it = PyObject_GC_New(VectorIteratorObject, &VectorIteratorType);
     it->vector = (VectorProxy*)self;
     it->index = 0;
     Py_INCREF((PyObject*)it->vector);  // Keep vector alive
+    PyObject_GC_Track((PyObject*)it);  // Register with GC
     return (PyObject*)it;
 }
 
@@ -1002,20 +1003,25 @@ PyInterface::bind("player", player) {
     // ↑ Master wrapper stored in registry
 }
 
-// python_proxy.cpp - Each proxy gets COPY of wrapper
+// python_proxy.cpp - Each proxy gets COPY of wrapper (GC-enabled)
 StructProxy *StructProxy_New(BoundStruct *bound) {
-    StructProxy *proxy = PyObject_New(StructProxy, &StructProxyType);
+    StructProxy *proxy = PyObject_GC_New(StructProxy, &StructProxyType);
     proxy->bound = new BoundStruct(*bound);  // ✓ COPY constructor
+    proxy->parent_proxy = nullptr;           // Initialize parent tracking
     // Wrapper contains:
     //   void *m_instance - points to actual data
     //   StructInfo *m_info - metadata pointer
     // Both shallow-copied, but m_instance still references original
+    PyObject_GC_Track((PyObject*)proxy);     // Register with GC
     return proxy;
 }
 
 void StructProxy_dealloc(PyObject *self) {
-    delete ((StructProxy*)self)->bound;  // Deletes THIS proxy's copy
-    PyObject_Del(self);
+    PyObject_GC_UnTrack(self);               // Unregister from GC
+    StructProxy *proxy = (StructProxy*)self;
+    delete proxy->bound;                     // Deletes THIS proxy's copy
+    Py_XDECREF(proxy->parent_proxy);         // Release parent reference
+    PyObject_GC_Del(self);                   // GC-aware deallocation
 }
 ```
 
@@ -1447,30 +1453,32 @@ typedef struct {
     PyObject *parent_proxy;           // Parent VectorProxy reference
 } StructProxyObject;
 
-// When creating element proxy from vector:
+// When creating element proxy from vector (GC-enabled):
 PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index) {
     // ... create BoundStruct with parent tracking ...
     
-    StructProxyObject *proxy = PyObject_New(StructProxyObject, &StructProxyType);
+    StructProxyObject *proxy = PyObject_GC_New(StructProxyObject, &StructProxyType);
     proxy->bound = element_wrapper;   // Transfer ownership
     
-    // ISSUE 48: Store parent reference to keep vector alive
+    // ISSUE 48 + Issue 51: Store parent reference to keep vector alive
     proxy->parent_proxy = self;       // Borrow parent
     Py_INCREF(self);                  // ✓ Increment refcount (now owned)
     
+    PyObject_GC_Track((PyObject*)proxy);  // Register with GC for cycle detection
     return (PyObject*)proxy;          // Return new reference to caller
 }
 
-// Destructor MUST release parent reference
+// Destructor MUST release parent reference (GC protocol)
 static void StructProxy_dealloc(PyObject *self) {
+    PyObject_GC_UnTrack(self);        // Unregister from GC
     StructProxyObject *proxy = (StructProxyObject*)self;
     
     delete proxy->bound;              // Free owned wrapper
     
-    // ISSUE 48: Release parent reference
+    // ISSUE 48 + Issue 51: Release parent reference
     Py_XDECREF(proxy->parent_proxy);  // ✓ Decrement parent refcount
     
-    Py_TYPE(self)->tp_free(self);
+    PyObject_GC_Del(self);            // GC-aware deallocation
 }
 ```
 
@@ -1515,13 +1523,14 @@ print(result.health)        # ✓ SAFE: parent_vector valid, dynamic resolution 
 
 ### Comprehensive Safety Architecture Summary
 
-**Five-Pillar Safety Model:**
+**Six-Pillar Safety Model:**
 
 1. **Wrapper Ownership (Issue #18):** Each proxy owns wrapper copy → no double-free
 2. **Parent Tracking (Issue #26):** Dynamic resolution → no use-after-free from reallocation
 3. **Thread Safety (Issue #34):** Mutex-protected singleton → no race conditions
 4. **Reference Counting (Issue #39):** Correct refcount semantics → no memory leaks
 5. **Parent-Child Lifetime (Issue #48):** Parent proxy references → no dangling pointers
+6. **Garbage Collection (Issue #51, #58):** GC protocol (tp_traverse/tp_clear) → circular reference detection and collection
 
 **Combined Safety Guarantee:**
 
