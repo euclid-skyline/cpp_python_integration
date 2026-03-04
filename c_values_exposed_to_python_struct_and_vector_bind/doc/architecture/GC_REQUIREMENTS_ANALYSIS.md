@@ -4,11 +4,23 @@
 **Date:** March 4, 2026  
 **Analysis Focus:** Complete GC support needed for all proxy types
 
+## Implementation Update (March 4, 2026)
+
+GC support has been implemented in `python_proxy.cpp` for all relevant proxy objects:
+
+- `StructProxyType`: `tp_traverse`, `tp_clear`, `Py_TPFLAGS_HAVE_GC`, `PyObject_GC_New`, `PyObject_GC_Track`, `PyObject_GC_UnTrack`, `PyObject_GC_Del`
+- `VectorProxyType`: `tp_traverse`, `tp_clear`, `Py_TPFLAGS_HAVE_GC`, `PyObject_GC_New`, `PyObject_GC_Track`, `PyObject_GC_UnTrack`, `PyObject_GC_Del`
+- `VectorIteratorType`: `tp_traverse`, `tp_clear`, `Py_TPFLAGS_HAVE_GC`, `PyObject_GC_New`, `PyObject_GC_Track`, `PyObject_GC_UnTrack`, `PyObject_GC_Del`
+
+Optional features were intentionally not implemented:
+- Custom `__repr__`
+- `weakref` support via `tp_weaklistoffset`
+
 ---
 
 ## Summary
 
-Issue 51 covers adding GC support to **StructProxyType** and **VectorProxyType**, but there are **3 additional implementation details** and **1 additional type** that need GC support.
+Issue 51 and Issue 58 are now implemented. This document remains as a design/analysis record of what was required and what was applied.
 
 ---
 
