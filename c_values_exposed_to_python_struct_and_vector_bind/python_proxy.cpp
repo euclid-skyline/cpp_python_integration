@@ -252,20 +252,40 @@ typedef struct
 } StructProxyObject;
 
 // ------------------------------------------------------------
+// GC support functions for StructProxy (Issue 51)
+// ------------------------------------------------------------
+static int StructProxy_traverse(PyObject *self, visitproc visit, void *arg)
+{
+    StructProxyObject *proxy = (StructProxyObject *)self;
+    Py_VISIT(proxy->parent_proxy);
+    return 0;
+}
+
+static int StructProxy_clear(PyObject *self)
+{
+    StructProxyObject *proxy = (StructProxyObject *)self;
+    Py_CLEAR(proxy->parent_proxy);
+    return 0;
+}
+
+// ------------------------------------------------------------
 // Destructor for StructProxy
 // ------------------------------------------------------------
 static void StructProxy_dealloc(PyObject *self)
 {
     StructProxyObject *proxy = (StructProxyObject *)self;
 
+    // Issue 51: Untrack from GC before cleanup
+    PyObject_GC_UnTrack(self);
+
+    // Clear references using GC-aware clear
+    StructProxy_clear(self);
+
     // Delete the BoundStruct wrapper
     delete proxy->bound;
 
-    // Decrement parent reference if exists
-    Py_XDECREF(proxy->parent_proxy);
-
-    // Free the Python object
-    PyObject_Del(self);
+    // Issue 51: Use GC-aware deallocation
+    PyObject_GC_Del(self);
 }
 
 // ------------------------------------------------------------
@@ -522,8 +542,10 @@ PyTypeObject StructProxyType = {
     StructProxy_getattro,                                // tp_getattro
     StructProxy_setattro,                                // tp_setattro
     0,                                                   // tp_as_buffer
-    Py_TPFLAGS_DEFAULT,                                  // tp_flags
-    "Proxy for C++ struct"                               // tp_doc
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,             // tp_flags (Issue 51: Added GC flag)
+    "Proxy for C++ struct",                              // tp_doc
+    StructProxy_traverse,                                // tp_traverse (Issue 51: GC support)
+    StructProxy_clear                                    // tp_clear (Issue 51: GC support)
 };
 
 // ------------------------------------------------------------
@@ -531,11 +553,13 @@ PyTypeObject StructProxyType = {
 // Issue 5 (Gemini Review): parent parameter enables tracking nested field proxies
 // Default parent=nullptr for top-level proxies from CppProxy
 // Pass parent=self for field proxies from StructProxy/VectorProxy
+// Issue 51: Uses GC-aware allocation for cycle detection
 // ------------------------------------------------------------
 PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent)
 {
+    // Issue 51: Use GC allocator for objects with PyObject references
     StructProxyObject *obj =
-        PyObject_New(StructProxyObject, &StructProxyType);
+        PyObject_GC_New(StructProxyObject, &StructProxyType);
 
     if (!obj)
     {
@@ -546,6 +570,10 @@ PyObject *StructProxy_New(BoundStruct *bound, PyObject *parent)
     obj->bound = bound;
     obj->parent_proxy = parent;
     Py_XINCREF(parent); // Increment parent reference count if not nullptr
+
+    // Issue 51: Track object in GC system
+    PyObject_GC_Track((PyObject *)obj);
+
     return (PyObject *)obj;
 }
 
@@ -560,20 +588,40 @@ typedef struct
 } VectorProxyObject;
 
 // ------------------------------------------------------------
+// GC support functions for VectorProxy (Issue 51)
+// ------------------------------------------------------------
+static int VectorProxy_traverse(PyObject *self, visitproc visit, void *arg)
+{
+    VectorProxyObject *proxy = (VectorProxyObject *)self;
+    Py_VISIT(proxy->parent_proxy);
+    return 0;
+}
+
+static int VectorProxy_clear(PyObject *self)
+{
+    VectorProxyObject *proxy = (VectorProxyObject *)self;
+    Py_CLEAR(proxy->parent_proxy);
+    return 0;
+}
+
+// ------------------------------------------------------------
 // Destructor for VectorProxy
 // ------------------------------------------------------------
 static void VectorProxy_dealloc(PyObject *self)
 {
     VectorProxyObject *proxy = (VectorProxyObject *)self;
 
+    // Issue 51: Untrack from GC before cleanup
+    PyObject_GC_UnTrack(self);
+
+    // Clear references using GC-aware clear
+    VectorProxy_clear(self);
+
     // Delete the BoundVector wrapper
     delete proxy->bound;
 
-    // Decrement parent reference if exists
-    Py_XDECREF(proxy->parent_proxy);
-
-    // Free the Python object
-    PyObject_Del(self);
+    // Issue 51: Use GC-aware deallocation
+    PyObject_GC_Del(self);
 }
 
 // ------------------------------------------------------------
@@ -1116,12 +1164,34 @@ typedef struct
     std::size_t index;              // Current iteration index
 } VectorIteratorObject;
 
+// ------------------------------------------------------------
+// GC support functions for VectorIterator (Issue 58)
+// ------------------------------------------------------------
+static int VectorIterator_traverse(PyObject *self, visitproc visit, void *arg)
+{
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    Py_VISIT(it->vector);
+    return 0;
+}
+
+static int VectorIterator_clear(PyObject *self)
+{
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    Py_CLEAR(it->vector);
+    return 0;
+}
+
 // Iterator destructor
 static void VectorIterator_dealloc(PyObject *self)
 {
-    VectorIteratorObject *it = (VectorIteratorObject *)self;
-    Py_XDECREF(it->vector);
-    PyObject_Del(self);
+    // Issue 58: Untrack from GC before cleanup
+    PyObject_GC_UnTrack(self);
+
+    // Clear references using GC-aware clear
+    VectorIterator_clear(self);
+
+    // Issue 58: Use GC-aware deallocation
+    PyObject_GC_Del(self);
 }
 
 // __iter__ on iterator returns itself
@@ -1179,10 +1249,10 @@ PyTypeObject VectorIteratorType = {
     0,                                                      // tp_getattro
     0,                                                      // tp_setattro
     0,                                                      // tp_as_buffer
-    Py_TPFLAGS_DEFAULT,                                     // tp_flags
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,                // tp_flags (Issue 58: Added GC flag)
     "Iterator for C++ vector",                              // tp_doc
-    0,                                                      // tp_traverse
-    0,                                                      // tp_clear
+    VectorIterator_traverse,                                // tp_traverse (Issue 58: GC support)
+    VectorIterator_clear,                                   // tp_clear (Issue 58: GC support)
     0,                                                      // tp_richcompare
     0,                                                      // tp_weaklistoffset
     VectorIterator_iter,                                    // tp_iter
@@ -1191,15 +1261,20 @@ PyTypeObject VectorIteratorType = {
 };
 
 // VectorProxy __iter__ implementation
+// Issue 58: Uses GC-aware allocation for iterator objects
 static PyObject *VectorProxy_iter(PyObject *self)
 {
-    VectorIteratorObject *it = PyObject_New(VectorIteratorObject, &VectorIteratorType);
+    // Issue 58: Use GC allocator for objects with PyObject references
+    VectorIteratorObject *it = PyObject_GC_New(VectorIteratorObject, &VectorIteratorType);
     if (!it)
         return nullptr;
 
     Py_INCREF(self); // Hold reference to vector
     it->vector = self;
     it->index = 0;
+
+    // Issue 58: Track object in GC system
+    PyObject_GC_Track((PyObject *)it);
 
     return (PyObject *)it;
 }
@@ -1255,10 +1330,10 @@ PyTypeObject VectorProxyType = {
     0,                                                   // tp_getattro
     0,                                                   // tp_setattro
     0,                                                   // tp_as_buffer
-    Py_TPFLAGS_DEFAULT,                                  // tp_flags
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,             // tp_flags (Issue 51: Added GC flag)
     "Proxy for C++ vector",                              // tp_doc
-    0,                                                   // tp_traverse
-    0,                                                   // tp_clear
+    VectorProxy_traverse,                                // tp_traverse (Issue 51: GC support)
+    VectorProxy_clear,                                   // tp_clear (Issue 51: GC support)
     0,                                                   // tp_richcompare
     0,                                                   // tp_weaklistoffset
     VectorProxy_iter,                                    // tp_iter (NEW!)
@@ -1270,11 +1345,13 @@ PyTypeObject VectorProxyType = {
 // Issue 5 (Gemini Review): parent parameter enables tracking nested field proxies
 // Default parent=nullptr for top-level proxies from CppProxy
 // Pass parent=self for field proxies from StructProxy/VectorProxy
+// Issue 51: Uses GC-aware allocation for cycle detection
 // ------------------------------------------------------------
 PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent)
 {
+    // Issue 51: Use GC allocator for objects with PyObject references
     VectorProxyObject *obj =
-        PyObject_New(VectorProxyObject, &VectorProxyType);
+        PyObject_GC_New(VectorProxyObject, &VectorProxyType);
 
     if (!obj)
     {
@@ -1285,5 +1362,9 @@ PyObject *VectorProxy_New(BoundVector *bound, PyObject *parent)
     obj->bound = bound;
     obj->parent_proxy = parent;
     Py_XINCREF(parent); // Increment parent reference count if not nullptr
+
+    // Issue 51: Track object in GC system
+    PyObject_GC_Track((PyObject *)obj);
+
     return (PyObject *)obj;
 }

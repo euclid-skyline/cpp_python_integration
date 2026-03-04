@@ -99,7 +99,7 @@ void generic_struct_destruct(void *ptr)
 
 **Severity:** 🟠 **HIGH** - Memory leaks
 
-**Status:** ❌ Not Fixed
+**Status:** ✅ Fixed
 
 ### Location
 - File: `python_proxy.cpp`
@@ -778,20 +778,156 @@ case ValueType::Vector:
 
 ---
 
+## Issue 58: VectorIteratorType Missing Garbage Collection Support
+
+**Severity:** 🟡 **MEDIUM** - Memory leaks (related to Issue 51)
+
+**Status:** ✅ Fixed
+
+### Location
+- File: `python_proxy.cpp`
+- Type: `VectorIteratorType` (line 1165)
+- Functions: `VectorIterator_dealloc()` (line 1120), `VectorProxy_iter()` (line 1194)
+
+### Problem Description
+Issue 51 addresses GC support for StructProxyType and VectorProxyType, but **does not mention VectorIteratorType**, which **ALSO holds a PyObject reference** (`PyObject *vector`). Without GC support, iterators can form cycles and prevent garbage collection.
+
+```cpp
+typedef struct {
+    PyObject_HEAD 
+    PyObject *vector;    // ⚠️ HOLDS REFERENCE - NEEDS GC!
+    std::size_t index;
+} VectorIteratorObject;
+
+// Missing GC support in current implementation
+PyObject *VectorProxy_iter(PyObject *self) {
+    VectorIteratorObject *it = PyObject_New(VectorIteratorObject, &VectorIteratorType);  // ❌ Should use GC allocator
+    // ...
+    Py_INCREF(self);
+    it->vector = self;
+    // Missing PyObject_GC_Track()
+}
+```
+
+### Impact
+- Iterator objects created in loops hold references to VectorProxy indefinitely
+- Without GC support, `vector` reference is not visited by garbage collector
+- Nested iterations (vectors of vectors) create uncollectable cycles
+- Memory leaks in long-running applications with frequent iteration
+
+### Example Leak Scenario
+```python
+def process_all_enemies():
+    for enemy_wave in cpp.waves:      # Creates VectorIterator #1
+        for enemy in enemy_wave:      # Creates VectorIterator #2
+            for item in enemy.items:  # Creates VectorIterator #3
+                # Three iterators hold parent references
+                # Without GC, these form cycles and leak
+                pass
+```
+
+### Root Cause
+VectorIteratorType was not included in Issue 51's scope, even though it has identical GC requirements
+
+### Recommended Fix
+
+**Priority:** High (Same as Issue 51)
+
+The fix is **identical in pattern** to Issue 51 (StructProxyType/VectorProxyType):
+
+```cpp
+// Type definition - UPDATED
+PyTypeObject VectorIteratorType = {
+    PyVarObject_HEAD_INIT(nullptr, 0) "cpp.VectorIterator",  // tp_name
+    sizeof(VectorIteratorObject),                             // tp_basicsize
+    0,                                                        // tp_itemsize
+    VectorIterator_dealloc,                                   // tp_dealloc
+    0,                                                        // tp_vectorcall_offset
+    0,                                                        // tp_getattr
+    0,                                                        // tp_setattr
+    0,                                                        // tp_as_async
+    0,                                                        // tp_repr
+    0,                                                        // tp_as_number
+    0,                                                        // tp_as_sequence
+    0,                                                        // tp_as_mapping
+    0,                                                        // tp_hash
+    0,                                                        // tp_call
+    0,                                                        // tp_str
+    0,                                                        // tp_getattro
+    0,                                                        // tp_setattro
+    0,                                                        // tp_as_buffer
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,                 // tp_flags (ADD GC FLAG)
+    "Iterator for C++ vector",                                // tp_doc
+    VectorIterator_traverse,                                  // tp_traverse (WAS: 0)
+    VectorIterator_clear,                                     // tp_clear (WAS: 0)
+    // ... rest unchanged
+};
+
+// Destructor - UPDATED
+static void VectorIterator_dealloc(PyObject *self) {
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    
+    PyObject_GC_UnTrack(self);      // ADD THIS
+    
+    Py_XDECREF(it->vector);
+    PyObject_GC_Del(self);          // Changed from PyObject_Del
+}
+
+// Constructor - UPDATED
+static PyObject *VectorProxy_iter(PyObject *self) {
+    VectorIteratorObject *it = 
+        PyObject_GC_New(VectorIteratorObject, &VectorIteratorType);  // USE GC ALLOCATOR
+    
+    if (!it)
+        return nullptr;
+    
+    Py_INCREF(self);
+    it->vector = self;
+    it->index = 0;
+    
+    PyObject_GC_Track((PyObject *)it);  // ADD THIS
+    
+    return (PyObject *)it;
+}
+
+// NEW: Traverse function
+static int VectorIterator_traverse(PyObject *self, visitproc visit, void *arg) {
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    Py_VISIT(it->vector);
+    return 0;
+}
+
+// NEW: Clear function
+static int VectorIterator_clear(PyObject *self) {
+    VectorIteratorObject *it = (VectorIteratorObject *)self;
+    Py_CLEAR(it->vector);
+    return 0;
+}
+```
+
+### Testing Strategy
+1. Create deeply nested iteration and verify all iterators are collected
+2. Monitor memory usage with many iterations
+3. Use `gc.get_referrers()` to verify cycles are broken
+4. Test parallel iteration patterns
+
+---
+
 ## Summary Statistics
 
 | Issue # | Severity | Category | Status | Priority |
 |---------|----------|----------|--------|----------|
 | 50 | 🔴 Critical | Exception Safety | Not Fixed | Immediate |
-| 51 | 🟠 High | Memory Management | Not Fixed | High |
+| 51 | 🟠 High | Memory Management | Fixed | High |
 | 52 | 🟠 High | Thread Safety | Not Fixed | High |
 | 53 | 🟡 Medium | Type Safety | Not Fixed | Medium |
 | 54 | 🟢 Low | Resource Cleanup | Not Fixed | Low |
 | 55 | 🟡 Medium | API Contract | Not Fixed | Medium |
 | 56 | 🟡 Medium | Code Clarity | Fixed | Medium |
 | 57 | 🟡 Medium | Defensive Programming | Fixed | Medium |
+| 58 | 🟡 Medium | Memory Management | Fixed | High |
 
-**Total Issues:** 8 (1 Critical, 2 High, 4 Medium, 1 Low)
+**Total Issues:** 9 (1 Critical, 1 High, 5 Medium, 1 Low, **4 Fixed**)
 
 ---
 
@@ -803,11 +939,15 @@ case ValueType::Vector:
    - Files affected: `reflection_builder.hpp`
 
 ### Phase 2: High-Priority Fixes (Do Soon)
-2. **Issue 51** - Circular references: Implement GC support
+2. **Issue 51** - Circular references: Implement GC support for StructProxy and VectorProxy
    - Estimated effort: 3-4 hours
    - Files affected: `python_proxy.cpp`
 
-3. **Issue 52** - Thread safety: Add mutex protection
+3. **Issue 58** - VectorIterator: Implement GC support (same pattern as Issue 51)
+   - Estimated effort: 30 minutes (parallel with Issue 51)
+   - Files affected: `python_proxy.cpp`
+
+4. **Issue 52** - Thread safety: Add mutex protection
    - Estimated effort: 1-2 hours
    - Files affected: `value_interface.hpp`, `value_interface.cpp`
 
