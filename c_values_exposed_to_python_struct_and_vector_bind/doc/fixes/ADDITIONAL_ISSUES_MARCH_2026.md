@@ -406,7 +406,7 @@ static Py_ssize_t VectorProxy_len(PyObject *self)
 
 **Severity:** 🟢 **LOW** - Memory leak at shutdown
 
-**Status:** ❌ Not Fixed
+**Status:** ✅ Fixed (March 4, 2026)
 
 ### Location
 - File: `python_proxy.cpp`
@@ -436,6 +436,19 @@ PyObject *create_cpp_proxy()
 
 ### Root Cause
 Missing cleanup logic in module shutdown
+
+### Implementation Update (March 4, 2026)
+
+Implemented deterministic singleton cleanup via module lifecycle hooks:
+
+- Added `destroy_cpp_proxy_singleton()` in `python_proxy.cpp`
+    - Uses the same mutex as `create_cpp_proxy()` for thread-safe teardown
+    - Calls `Py_CLEAR(g_cpp_proxy_instance)` to release the module-owned reference
+- Added `cpp_module_free()` in `cpp_module.cpp`
+    - Registered as `PyModuleDef.m_free`
+    - Calls `destroy_cpp_proxy_singleton()` during module/interpreter teardown
+
+This removes the shutdown leak for `g_cpp_proxy_instance` and provides deterministic cleanup in embedded/reload scenarios.
 
 ### Recommended Fix
 
@@ -934,13 +947,13 @@ static int VectorIterator_clear(PyObject *self) {
 | 51 | 🟠 High | Memory Management | Fixed | High |
 | 52 | 🟠 High | Thread Safety | Not Fixed | High |
 | 53 | 🟡 Medium | Type Safety | Fixed | Medium |
-| 54 | 🟢 Low | Resource Cleanup | Not Fixed | Low |
+| 54 | 🟢 Low | Resource Cleanup | Fixed | Low |
 | 55 | 🟡 Medium | API Contract | Not Fixed | Medium |
 | 56 | 🟡 Medium | Code Clarity | Fixed | Medium |
 | 57 | 🟡 Medium | Defensive Programming | Fixed | Medium |
 | 58 | 🟡 Medium | Memory Management | Fixed | High |
 
-**Total Issues:** 9 (1 Critical, 1 High, 5 Medium, 1 Low, **5 Fixed**)
+**Total Issues:** 9 (1 Critical, 1 High, 5 Medium, 1 Low, **6 Fixed**)
 
 ---
 
@@ -977,9 +990,8 @@ static int VectorIterator_clear(PyObject *self) {
 - ✅ Issue 53 - Integer overflow checks implemented for size conversions in len/index paths
 
 ### Phase 4: Cleanup (Nice to Have)
-8. **Issue 54** - Singleton cleanup
-   - Estimated effort: 15 minutes
-   - Files affected: `cpp_module.cpp`
+**Completed in this phase:**
+- ✅ Issue 54 - Singleton cleanup via module `m_free` callback
 
 ---
 

@@ -1,9 +1,27 @@
 #include "python_proxy.hpp"
 #include "value_interface.hpp"
 
+// -----------------------------------------------------------------------------
+// Module teardown callback (Issue 54)
+//
+// Why module free is required:
+// - create_cpp_proxy() stores a singleton in g_cpp_proxy_instance and keeps a
+//   module-lifetime reference.
+// - Without releasing that reference, leak detectors report a shutdown leak
+//   even though the OS eventually reclaims memory at process exit.
+// - m_free is the correct CPython lifecycle hook for module finalization and
+//   sub-interpreter teardown; this gives deterministic cleanup for tests and
+//   embedded runtimes that initialize/finalize Python repeatedly.
+// -----------------------------------------------------------------------------
+static void cpp_module_free(void *)
+{
+    destroy_cpp_proxy_singleton();
+}
+
 // Module __getattr__ to dynamically look up C++ variables
 static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
 {
+    (void)module; // Parameter required by CPython API but not used
     // Convert name to string
     const char *attr_name = PyUnicode_AsUTF8(name);
     if (!attr_name)
@@ -87,6 +105,7 @@ static PyObject *cpp_module_getattr(PyObject *module, PyObject *name)
 // Module __setattr__ to allow setting scalar values
 static int cpp_module_setattr(PyObject *module, PyObject *name, PyObject *value)
 {
+    (void)module; // Parameter required by CPython API but not used
     // Convert name to string
     const char *attr_name = PyUnicode_AsUTF8(name);
     if (!attr_name)
@@ -152,10 +171,10 @@ static PyModuleDef cppmodule = {
     "C++ bridge module",
     -1,
     nullptr,
-    nullptr, // m_reload
-    nullptr, // m_traverse
-    nullptr, // m_clear
-    nullptr  // m_free
+    nullptr,        // m_reload
+    nullptr,        // m_traverse
+    nullptr,        // m_clear
+    cpp_module_free // m_free
 };
 
 // Custom module type with __getattr__ and __setattr__

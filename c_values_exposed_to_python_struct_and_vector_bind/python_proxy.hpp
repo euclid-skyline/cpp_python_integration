@@ -12,6 +12,7 @@
 // Root proxy (from value_interface_proxy.cpp)
 extern PyTypeObject CppProxyType;
 PyObject *create_cpp_proxy();
+void destroy_cpp_proxy_singleton();
 
 // StructProxy (from aggregate_interface_proxy.cpp)
 extern PyTypeObject StructProxyType;

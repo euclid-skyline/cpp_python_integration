@@ -241,6 +241,19 @@ PyObject *create_cpp_proxy()
 }
 
 // ============================================================================
+// SINGLETON CLEANUP: destroy_cpp_proxy_singleton()
+// ============================================================================
+// Issue 54: Releases the module-owned reference to the CppProxy singleton.
+// Called from the module m_free callback at interpreter/module teardown.
+// Thread-safe via the same mutex used for creation, so creation/destruction
+// cannot race in embedding scenarios.
+void destroy_cpp_proxy_singleton()
+{
+    std::lock_guard<std::mutex> lock(g_cpp_proxy_mutex);
+    Py_CLEAR(g_cpp_proxy_instance);
+}
+
+// ============================================================================
 // SECTION 2 — StructProxy (from aggregate_interface_proxy.cpp)
 // ============================================================================
 
