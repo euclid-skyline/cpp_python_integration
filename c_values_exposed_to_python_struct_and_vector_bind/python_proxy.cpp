@@ -1210,10 +1210,12 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 // ============================================================================
 
 // Iterator object for VectorProxy
+// Issue 55: Added cached_size to detect vector modifications during iteration
 typedef struct
 {
     PyObject_HEAD PyObject *vector; // Reference to the VectorProxy object
     std::size_t index;              // Current iteration index
+    std::size_t cached_size;        // Size at iterator creation (Issue 55)
 } VectorIteratorObject;
 
 // ------------------------------------------------------------
@@ -1254,6 +1256,7 @@ static PyObject *VectorIterator_iter(PyObject *self)
 }
 
 // __next__ implementation
+// Issue 55: Detects vector modifications during iteration
 static PyObject *VectorIterator_next(PyObject *self)
 {
     VectorIteratorObject *it = (VectorIteratorObject *)self;
@@ -1265,8 +1268,27 @@ static PyObject *VectorIterator_next(PyObject *self)
         return nullptr;
     }
 
+    // Issue 55: Check if vector was modified during iteration
+    //
+    // In C++, std::vector allows modifications during iteration. However, Python's
+    // iterator contract forbids this (following Python's list behavior). If the vector
+    // size changes between iterator creation and use, we must raise RuntimeError.
+    //
+    // Why this matters:
+    // - Addition: Iterator would silently include newly-added items (unexpected)
+    // - Deletion: Iterator would skip elements (data loss)
+    // - Reallocation: Iterator might access freed memory (segfault)
+    //
+    // We cache the size at iterator creation, so any modification is detected.
+    std::size_t current_size = proxy->bound->size();
+    if (current_size != it->cached_size)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "vector modified during iteration");
+        return nullptr;
+    }
+
     // Check if we've reached the end
-    if (it->index >= proxy->bound->size())
+    if (it->index >= current_size)
     {
         PyErr_SetNone(PyExc_StopIteration);
         return nullptr;
@@ -1322,6 +1344,7 @@ PyTypeObject VectorIteratorType = {
 
 // VectorProxy __iter__ implementation
 // Issue 58: Uses GC-aware allocation for iterator objects
+// Issue 55: Caches vector size at iterator creation for modification detection
 static PyObject *VectorProxy_iter(PyObject *self)
 {
     // Issue 58: Use GC allocator for objects with PyObject references
@@ -1332,6 +1355,12 @@ static PyObject *VectorProxy_iter(PyObject *self)
     Py_INCREF(self); // Hold reference to vector
     it->vector = self;
     it->index = 0;
+
+    // Issue 55: Cache the current vector size at iterator creation.
+    // This allows VectorIterator_next() to detect if the vector was modified
+    // (append/delete) during iteration and raise RuntimeError as per Python semantics.
+    VectorProxyObject *proxy = (VectorProxyObject *)self;
+    it->cached_size = proxy->bound->size();
 
     // Issue 58: Track object in GC system
     PyObject_GC_Track((PyObject *)it);
