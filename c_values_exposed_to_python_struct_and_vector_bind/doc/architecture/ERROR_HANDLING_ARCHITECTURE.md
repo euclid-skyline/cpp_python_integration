@@ -11,15 +11,16 @@
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Architectural Overview](#architectural-overview)
-3. [Component Architecture](#component-architecture)
-4. [Python-Side Error Handling](#python-side-error-handling)
-5. [C++-Side Error Handling](#c-side-error-handling)
-6. [Bidirectional Error Flow](#bidirectional-error-flow)
-7. [State Management During Errors](#state-management-during-errors)
-8. [Recovery Strategies](#recovery-strategies)
-9. [Design Patterns](#design-patterns)
-10. [Implementation Roadmap](#implementation-roadmap)
+2. [Architecture Detail Intent](#architecture-detail-intent)
+3. [Architectural Overview](#architectural-overview)
+4. [Component Architecture](#component-architecture)
+5. [Python-Side Error Handling](#python-side-error-handling)
+6. [C++-Side Error Handling](#c-side-error-handling)
+7. [Bidirectional Error Flow](#bidirectional-error-flow)
+8. [State Management During Errors](#state-management-during-errors)
+9. [Recovery Strategies](#recovery-strategies)
+10. [Design Patterns](#design-patterns)
+11. [Implementation Roadmap](#implementation-roadmap)
 
 ---
 
@@ -63,6 +64,83 @@ This design allows:
 
 ---
 
+## Architecture Detail Intent
+
+The architecture is intentionally split into **execution domains** (Python runtime and C++ runtime) with a strict **boundary contract** between them. The key intent is to prevent exception leakage across language boundaries while still preserving enough semantic meaning for recovery, diagnostics, and maintainability.
+
+### Intent 1: Safety (No cross-language crash from unhandled exceptions)
+
+- **Python Script + Python Exception System** contain script-level failures locally with `try/except`.
+- **Python C API Boundary** enforces Python contracts (`nullptr`/`-1` + exception indicator) so C++ never receives undefined interpreter state.
+- **Exception Translation Layer** normalizes exception meaning when crossing domains (C++ exception categories ↔ Python exception types).
+- **C++ try/catch and proxy boundary handlers** stop raw C++ exceptions from escaping into Python internals.
+
+Result: exceptions are always caught at the boundary and converted into the receiving runtime's expected error model.
+
+### Intent 2: Reliability (Continue operation with controlled degradation)
+
+- **Centralized Error Handler / Error Ingestion** creates a single intake path for all error sources (Python, C++, translation, boundary).
+- **Severity & Source Classifier** determines operational impact (warning vs error vs critical).
+- **State Impact Analyzer** decides whether normal execution can continue or if degraded mode is required.
+- **Recovery Policy Engine** selects an action path (retry, rollback, fallback, shutdown) based on severity, source, and context.
+
+Result: failures become managed events with deterministic recovery behavior instead of ad-hoc local handling.
+
+### Intent 3: Observability (Diagnosable failures with end-to-end context)
+
+- **Structured Logger** records normalized error payloads with timestamp, context, and traceback/exception message.
+- **Monitoring Notifier** emits actionable signals for dashboards/alerts.
+- **Translation Layer + Ingestion** preserve source-domain details while adding destination-domain context.
+
+Result: operators and developers can trace where an error started, how it was translated, and what recovery decision was taken.
+
+### Intent 4: Maintainability (Clear ownership and low coupling)
+
+- **Python Bridge Layer** owns marshalling, conversion, and proxy behavior.
+- **Reflection/Core C++ layer** remains language-agnostic and focused on domain logic.
+- **Error Handler and Recovery Mechanism** centralize policy, avoiding duplicated decision logic in each call site.
+
+Result: changes to error policy happen in one place, while scripting integration remains thin and replaceable.
+
+### Intent 5: Extensibility (Support additional scripting runtimes)
+
+- The same boundary pattern can be reused for Lua/Ruby by adding runtime-specific proxy/translation handlers.
+- Core C++ reflection and recovery subsystems remain unchanged.
+- Only runtime-specific exception mapping and resource safety adapters need to be implemented.
+
+Result: new language bindings can be added without redesigning core architecture.
+
+### Component Interaction Walkthrough (Typical Failure Path)
+
+1. Python operation fails or C++ operation throws.
+2. Boundary handler captures the failure and forwards through the **Exception Translation Layer**.
+3. Translated error is ingested by **Centralized Error Handler**.
+4. Error is classified, logged, and evaluated for state impact.
+5. **Recovery Mechanism** policy selects retry/rollback/fallback/shutdown.
+6. Outcome is reported to monitoring and control returns to the main loop with updated state.
+
+This flow ensures every failure follows the same lifecycle: **capture → normalize → classify → decide → recover/report**.
+
+### Failure Lifecycle Diagram
+
+```mermaid
+graph LR
+    Failure["Failure Occurs"]
+    Capture["CAPTURE<br/>Boundary Handler"]
+    Normalize["NORMALIZE<br/>Translation Layer"]
+    Classify["CLASSIFY<br/>Error Handler"]
+    Decide["DECIDE<br/>Recovery Policy"]
+    Recover["RECOVER/REPORT<br/>Execute Action"]
+    
+    Failure --> Capture
+    Capture --> Normalize
+    Normalize --> Classify
+    Classify --> Decide
+    Decide --> Recover
+```
+
+---
+
 ## Architectural Overview
 
 ### High-Level Architecture
@@ -89,6 +167,18 @@ graph TB
     
     CAPI --> PythonInterp
 ```
+
+**High-Level Architecture Explanation**
+
+The diagram illustrates three distinct execution domains where error handling must be managed at boundaries:
+
+1. **C++ Application Domain** (left): The main event loop runs C++ code that initiates operations. The Error Handler Layer monitors for exceptions and provides the first line of defense. The Python Bridge Layer acts as the transition point, preparing for calls across the language boundary.
+
+2. **Python C API Boundary** (center): This is the critical isolation layer. The Python C API (CAPI) enforces strict contract semantics—any exception that occurs must be captured and converted before crossing. This boundary prevents unhandled C++ exceptions from crashing the Python interpreter and vice versa. No exception is allowed to leak across this barrier.
+
+3. **Python Interpreter Domain** (right): Once the boundary is safely crossed, Python code executes in its own interpreter context with its own exception model. Python errors are caught using standard try/except mechanisms and communicated back to C++ via the C API's error indicator mechanism.
+
+**Key Design Point**: The unidirectional arrows indicate that exceptions must be explicitly caught, translated, and converted at each boundary crossing. This prevents language-specific exception semantics from propagating uncontrolled across language domains and ensures both the C++ application and Python interpreter remain in stable, recoverable states.
 
 ### Error Flow Components
 
@@ -146,6 +236,22 @@ graph TD
     EHState --> RMPolicy
     EHNotify --> RMPolicy
 ```
+
+**Error Flow Components Explanation**
+
+The diagram maps four major functional areas that work together to handle errors as they move up from failure point to recovery decision:
+
+1. **Python Exception Domain** (top-left): Represents the Python side of error capture. Python code raises exceptions, which are caught via `try/except`, and then reported to C++ using the Python C API's error indicator mechanism (`PyErr_SetString`/`PyErr_Format`). This domain is purely Python runtime semantics.
+
+2. **Exception Translation Layer** (center): The critical translation bridge. It maintains bidirectional mappings: Python exceptions → C++ exception contexts and C++ exceptions → Python error indicators. The layer performs semantic normalization so a C++ `std::out_of_range` maps sensibly to a Python `IndexError`, and vice versa. This layer is language-agnostic in structure but domain-aware in semantics.
+
+3. **C++ Exception Domain** (top-right): Represents the C++ side. Raw C++ exceptions are caught in `try/catch` blocks, with exception details (type, message, context) preserved. This domain uses standard C++ exception semantics and must prevent exceptions from crossing into Python automatically—they must be explicitly translated.
+
+4. **Centralized Error Handler** (bottom-left): All errors from both domains feed here. The Error Ingestion step normalizes incoming errors to a common internal representation. The Severity & Source Classifier determines whether an error is informational, a warning, a recoverable error, or a critical system failure. The Structured Logger records all details with timestamp and context. The State Impact Analyzer checks whether the application can continue normally or must enter degraded mode.
+
+5. **Recovery Mechanism** (bottom-right): Once classified, the Recovery Policy Engine consults the error profile (severity, source, repetition count) and chooses a strategy: Retry with backoff (for transient failures), Fallback to safe mode (for degraded operation), Rollback to undo partial changes, or Shutdown (for unrecoverable failures).
+
+**Flow Pattern**: Errors enter from Python or C++ → translated at boundary → ingested and classified → impact assessed → recovery strategy selected → action taken. This creates a deterministic, observable path from failure to recovery.
 
 ---
 
