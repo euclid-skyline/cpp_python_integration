@@ -67,105 +67,84 @@ This design allows:
 
 ### High-Level Architecture
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                        C++ Application                         │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                     Main Event Loop                      │  │
-│  │  • Game/Animation Loop                                   │  │
-│  │  • User Input Processing                                 │  │
-│  │  • State Management                                      │  │
-│  └─────────────┬───────────────────────────┬────────────────┘  │
-│                │                           │                   │
-│                ↓                           ↓                   │
-│  ┌─────────────────────────┐   ┌──────────────────────────┐    │
-│  │   Error Handler Layer   │   │  Python Bridge Layer     │    │
-│  │  • Exception Catching   │   │  • API Marshalling       │    │
-│  │  • Error Translation    │   │  • Type Conversion       │    │
-│  │  • Logging              │   │  • Reference Counting    │    │
-│  │  • Recovery Logic       │   │  • Proxy Management      │    │
-│  └────────┬────────────────┘   └──────────┬───────────────┘    │
-│           │                               │                    │
-│           │      ┌────────────────────────┘                    │
-│           │      │                                             │
-│           ↓      ↓                                             │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │            Python C API Boundary                        │   │
-│  │  ═════════════════════════════════════════════════════  │   │
-│  │  • try-catch barriers                                   │   │
-│  │  • PyErr_SetString/PyErr_Format                         │   │
-│  │  • PyErr_Occurred/PyErr_Clear                           │   │
-│  │  • Reference count safety                               │   │
-│  └─────────────────┬───────────────────────────────────────┘   │
-│                    │                                           │
-└────────────────────┼───────────────────────────────────────────┘
-                     │
-                     ↓
-┌────────────────────────────────────────────────────────────────┐
-│                      Python Interpreter                        │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                  Python Script (controller.py)           │  │
-│  │  def update_values():                                    │  │
-│  │      try:                                                │  │
-│  │          # Access C++ data via cpp.* proxies             │  │
-│  │          cpp.player.health = 100                         │  │
-│  │          cpp.enemies.append_new()                        │  │
-│  │      except (ValueError, RuntimeError) as e:             │  │
-│  │          # Python-side error handling                    │  │
-│  │          log_error(e)                                    │  │
-│  │          return ErrorCode.HANDLED                        │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              Python Exception System                     │  │
-│  │  • raise Exception(...)                                  │  │
-│  │  • try/except blocks                                     │  │
-│  │  • Exception hierarchy                                   │  │
-│  │  • Traceback management                                  │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph CppApp["C++ Application"]
+        MEL["Main Event Loop<br/>• Game/Animation Loop<br/>• User Input Processing<br/>• State Management"]
+        EHL["Error Handler Layer<br/>• Exception Catching<br/>• Error Translation<br/>• Logging<br/>• Recovery Logic"]
+        PBL["Python Bridge Layer<br/>• API Marshalling<br/>• Type Conversion<br/>• Reference Counting<br/>• Proxy Management"]
+        MEL --> EHL
+        MEL --> PBL
+        EHL --> CAPI
+        PBL --> CAPI
+    end
+    
+    CAPI["Python C API Boundary<br/>try-catch barriers<br/>PyErr_SetString/PyErr_Format<br/>PyErr_Occurred/PyErr_Clear<br/>Reference count safety"]
+    
+    subgraph PythonInterp["Python Interpreter"]
+        PS["Python Script controller.py<br/>def update_values():<br/>    try:<br/>        cpp.player.health = 100<br/>        cpp.enemies.append_new()<br/>    except ValueError as e:<br/>        log_error e"]
+        PES["Python Exception System<br/>• raise Exception<br/>• try/except blocks<br/>• Exception hierarchy<br/>• Traceback management"]
+        PS --> PES
+    end
+    
+    CAPI --> PythonInterp
 ```
 
 ### Error Flow Components
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Error Flow Architecture                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Python Exception                   C++ Exception               │
-│        ↓                                  ↓                     │
-│  ┌─────────────┐                    ┌─────────────┐             │
-│  │   Python    │                    │   C++ try-  │             │
-│  │  try/except │                    │   catch     │             │
-│  └──────┬──────┘                    └──────┬──────┘             │
-│         │                                  │                    │
-│         ↓                                  ↓                    │
-│  ┌──────────────────┐             ┌──────────────────┐          │
-│  │ PyErr_SetString  │←───────────→│ Exception        │          │
-│  │ (Sets Python     │ Translation │ Translation      │          │
-│  │  error indicator)│             │ Layer            │          │
-│  └────────┬─────────┘             └────────┬─────────┘          │
-│           │                                │                    │
-│           ↓                                ↓                    │
-│  ┌─────────────────────────────────────────────────┐            │
-│  │         Centralized Error Handler               │            │
-│  │  • Logs all errors                              │            │
-│  │  • Decides recovery strategy                    │            │
-│  │  • Updates application state                    │            │
-│  │  • Notifies monitoring systems                  │            │
-│  └─────────────────┬───────────────────────────────┘            │
-│                    │                                            │
-│                    ↓                                            │
-│  ┌─────────────────────────────────────────────────┐            │
-│  │         Recovery Mechanism                      │            │
-│  │  • Retry operation                              │            │
-│  │  • Fallback to safe state                       │            │
-│  │  • Skip operation and continue                  │            │
-│  │  • Terminate gracefully                         │            │
-│  └─────────────────────────────────────────────────┘            │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph PyDomain["Python Exception Domain"]
+        PyEx["Python Exception"]
+        PyTry["Python<br/>try/except"]
+        PyErr["PyErr_SetString / PyErr_Format<br/>Sets Python error indicator"]
+        PyEx --> PyTry --> PyErr
+    end
+
+    XL["Exception Translation Layer<br/>• Python → C++ mapping<br/>• C++ → Python mapping<br/>• Semantic normalization"]
+
+    subgraph CppDomain["C++ Exception Domain"]
+        CppEx["C++ Exception"]
+        CppTry["C++ try/catch"]
+        CppEx --> CppTry
+    end
+
+    PyErr -->|Python error to C++ context| XL
+    XL -->|Raise/propagate C++ exception| CppEx
+    CppTry -->|Caught C++ exception details| XL
+    XL -->|Set Python error indicator| PyErr
+
+    subgraph CEH["Centralized Error Handler"]
+        EHIngest["Error Ingestion<br/>Normalize incoming errors"]
+        EHClassify["Severity & Source Classifier<br/>Info/Warning/Error/Critical"]
+        EHLogger["Structured Logger<br/>Context, timestamp, traceback"]
+        EHState["State Impact Analyzer<br/>Running vs degraded"]
+        EHNotify["Monitoring Notifier<br/>Alerts, metrics, diagnostics"]
+
+        EHIngest --> EHClassify
+        EHClassify --> EHLogger
+        EHClassify --> EHState
+        EHLogger --> EHNotify
+    end
+
+    subgraph RM["Recovery Mechanism"]
+        RMPolicy["Recovery Policy Engine<br/>Select strategy by error profile"]
+        RMRetry["Retry Controller<br/>Backoff, max attempts"]
+        RMFallback["Fallback Orchestrator<br/>Safe mode, feature disable"]
+        RMRollback["Rollback Coordinator<br/>Revert partial changes"]
+        RMShutdown["Shutdown Manager<br/>Graceful or emergency exit"]
+
+        RMPolicy --> RMRetry
+        RMPolicy --> RMFallback
+        RMPolicy --> RMRollback
+        RMPolicy --> RMShutdown
+    end
+
+    XL --> EHIngest
+    CppTry --> EHIngest
+    PyTry --> EHIngest
+    EHState --> RMPolicy
+    EHNotify --> RMPolicy
 ```
 
 ---
@@ -1076,59 +1055,44 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 
 ### Scenario 1: Python → C++ → Python (Callback)
 
-```
-Python Script                 C++ API              Python C API
-     │                           │                      │
-     │  call cpp.enemies[0]      │                      │
-     ├──────────────────────────→│                      │
-     │                           │  VectorProxy_getitem │
-     │                           ├─────────────────────→│
-     │                           │                      │
-     │                           │←─────────────────────┤
-     │                           │  returns StructProxy │
-     │←──────────────────────────┤                      │
-     │  try:                     │                      │
-     │    enemy.health = -1      │                      │
-     ├──────────────────────────→│                      │
-     │                           │  StructProxy_setattro│
-     │                           ├─────────────────────→│
-     │                           │  (throws exception)  │
-     │                           │      ↓               │
-     │                           │  catch & convert     │
-     │                           │      ↓               │
-     │                           │  PyErr_SetString()   │
-     │                           │←─────────────────────┤
-     │                           │  returns -1          │
-     │←──────────────────────────┤                      │
-     │  except ValueError as e:  │                      │
-     │    handle(e)              │                      │
-     ↓                           ↓                      ↓
+```mermaid
+sequenceDiagram
+    participant PyScript as Python Script
+    participant CppAPI as C++ API
+    participant PyCAPI as Python C API
+    
+    PyScript->>CppAPI: call cpp.enemies[0]
+    CppAPI->>PyCAPI: VectorProxy_getitem
+    PyCAPI-->>CppAPI: returns StructProxy
+    CppAPI-->>PyScript: returns StructProxy
+    
+    PyScript->>CppAPI: enemy.health = -1
+    CppAPI->>PyCAPI: StructProxy_setattro
+    PyCAPI->>PyCAPI: throws exception<br/>catch & convert<br/>PyErr_SetString()
+    PyCAPI-->>CppAPI: returns -1
+    CppAPI-->>PyScript: exception set
+    
+    PyScript->>PyScript: except ValueError as e:<br/>handle(e)
 ```
 
 ### Scenario 2: C++ → Python → C++ (Error Propagation)
 
-```
-C++ Main                Python Interpreter      C++ Error Handler
-    │                          │                        │
-    │  PyObject_CallObject     │                        │
-    ├─────────────────────────→│                        │
-    │                          │  execute script        │
-    │                          │  (exception raised)    │
-    │                          │←──┐                    │
-    │                          │   │ raise ValueError   │
-    │                          │←──┘                    │
-    │                          │  (exception set)       │
-    │←─────────────────────────┤                        │
-    │  returns nullptr         │                        │
-    │  PyErr_Occurred() == true│                        │
-    │                          │                        │
-    │  Extract error info      │                        │
-    ├──────────────────────────┼───────────────────────→│
-    │                          │  RecordPythonError()   │
-    │                          │                        │
-    │←──────────────────────────────────────────────────┤
-    │  Decide recovery action  │                        │
-    ↓                          ↓                        ↓
+```mermaid
+sequenceDiagram
+    participant CppMain as C++ Main
+    participant PyInterp as Python Interpreter
+    participant ErrorH as C++ Error Handler
+    
+    CppMain->>PyInterp: PyObject_CallObject
+    PyInterp->>PyInterp: execute script
+    PyInterp->>PyInterp: exception raised<br/>raise ValueError
+    PyInterp-->>CppMain: returns nullptr<br/>PyErr_Occurred() == true
+    
+    CppMain->>CppMain: Extract error info
+    CppMain->>ErrorH: RecordPythonError()
+    ErrorH-->>CppMain: error recorded
+    
+    CppMain->>CppMain: Decide recovery action
 ```
 
 ---
@@ -1137,36 +1101,21 @@ C++ Main                Python Interpreter      C++ Error Handler
 
 ### State Transitions
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Application State Machine                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────┐                                               │
-│  │  Normal  │◄────────────────────────┐                     │
-│  │  Running │                         │                     │
-│  └────┬─────┘                         │                     │
-│       │ Error Occurred                │ Recovered           │
-│       ↓                               │                     │
-│  ┌──────────┐     Critical Error      │                     │
-│  │  Error   ├────────────────────────→│                     │
-│  │ Handling │                         │                     │
-│  └────┬─────┘                         │                     │
-│       │ Recovery Failed               │                     │
-│       ↓                               │                     │
-│  ┌──────────┐                   ┌─────┴──────┐              │
-│  │  Safe    │                   │  Recovery  │              │
-│  │  Mode    │                   │  Attempt   │              │
-│  └────┬─────┘                   └─────┬──────┘              │
-│       │                               │                     │
-│       │ User Request / Timeout        │ Multiple Failures   │
-│       ↓                               ↓                     │
-│  ┌──────────┐                   ┌──────────┐                │
-│  │Graceful  │                   │Emergency │                │
-│  │Shutdown  │                   │Shutdown  │                │
-│  └──────────┘                   └──────────┘                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> Running
+    
+    Running --> ErrorHandling: Error Occurred
+    ErrorHandling --> Running: Recovered
+    ErrorHandling --> SafeMode: Recovery Failed
+    ErrorHandling --> Shutdown: Critical Error
+    
+    SafeMode --> Running: Restored
+    SafeMode --> GracefulShutdown: User Request/<br/>Timeout
+    SafeMode --> EmergencyShutdown: Multiple<br/>Failures
+    
+    GracefulShutdown --> [*]
+    EmergencyShutdown --> [*]
 ```
 
 ### State Management Implementation
@@ -1595,53 +1544,73 @@ if (!result) {
 
 **Critical Principle:** Maintain clear separation between language-agnostic reflection layer and language-specific proxy layers.
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│  PYTHON BINDING LAYER (python_proxy.cpp)                           │
-│  ═══════════════════════════════════════════════════════════════   │
-│  • Knows about Python.h and PyErr_SetString                        │
-│  • Catches C++ exceptions from reflection layer                    │
-│  • Converts exceptions → PyErr_SetString/Format                    │
-│  • Handles reference counting with Py_INCREF/DECREF                │
-│  • Logs errors via ErrorHandler (diagnostics)                      │
-│  • Returns nullptr or -1 to Python C API                           │
-│                                                                    │
-│  try {                                                             │
-│      reflection_func();  // May throw C++ exceptions               │
-│  } catch (const std::exception& e) {                               │
-│      PyErr_SetString(...);  // Convert to Python error             │
-│      return nullptr;        // Return per Python contract          │
-│  }                                                                 │
-└────────────────────────────────────────────────────────────────────┘
-                                ↕
-┌────────────────────────────────────────────────────────────────────┐
-│  REFLECTION LAYER (reflection_builder.hpp)                         │
-│  ═══════════════════════════════════════════════════════════════   │
-│  • PURE C++ - No Python.h dependencies                             │
-│  • Template metaprogramming and type erasure                       │
-│  • Throws std::exception on errors (natural C++ semantics)         │
-│  • Can be used with ANY scripting language:                        │
-│    - Python bindings via proxy layer above                         │
-│    - Lua bindings via different proxy layer                        │
-│    - Ruby bindings via different proxy layer                       │
-│  • Functions are:                                                  │
-│    - generic_vec_append(void*, void*) → throws on OOM              │
-│    - generic_struct_construct(void*) → throws on error             │
-│    - generic_struct_destruct(void*) → noexcept                     │
-│                                                                    │
-│  template<typename T>                                              │
-│  void generic_vec_append(void* vec, void* val) {                   │
-│      vec->push_back(val);  // May throw - normal C++               │
-│      // No Python code here!                                       │
-│  }                                                                 │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph PythonBinding["🐍 PYTHON BINDING LAYER<br/>python_proxy.cpp"]
+        PyExCatch["Exception Catcher<br/>try/catch blocks"]
+        PyExConvert["Exception Converter<br/>C++ → PyErr_SetString"]
+        PyRefCount["Reference Counter<br/>Py_INCREF/DECREF safety"]
+        PyErrLog["Error Logger<br/>ErrorHandler integration"]
+        
+        PyExCatch --> PyExConvert
+        PyExConvert --> PyRefCount
+        PyRefCount --> PyErrLog
+    end
+    
+    subgraph LuaBinding["🌙 LUA BINDING LAYER<br/>lua_proxy.cpp"]
+        LuaExCatch["Exception Catcher<br/>try/catch blocks"]
+        LuaExConvert["Exception Converter<br/>C++ → lua_error"]
+        LuaStack["Stack Manager<br/>Lua stack safety"]
+        LuaErrLog["Error Logger<br/>ErrorHandler integration"]
+        
+        LuaExCatch --> LuaExConvert
+        LuaExConvert --> LuaStack
+        LuaStack --> LuaErrLog
+    end
+    
+    subgraph RubyBinding["💎 RUBY BINDING LAYER<br/>ruby_proxy.cpp"]
+        RubyExCatch["Exception Catcher<br/>try/catch blocks"]
+        RubyExConvert["Exception Converter<br/>C++ → rb_raise"]
+        RubyGC["GC Manager<br/>Ruby GC safety"]
+        RubyErrLog["Error Logger<br/>ErrorHandler integration"]
+        
+        RubyExCatch --> RubyExConvert
+        RubyExConvert --> RubyGC
+        RubyGC --> RubyErrLog
+    end
+    
+    Boundary["BINDING BOUNDARY<br/>Pure C++ APIs<br/>Exception contracts<br/>Memory semantics"]
+    
+    subgraph ReflectionLayer["⚙️ REFLECTION LAYER<br/>reflection_builder.hpp"]
+        GenericVec["Generic Vec Operations<br/>push_back, erase, resize<br/>May throw std::bad_alloc"]
+        GenericStruct["Generic Struct Operations<br/>construct, destruct, assign<br/>May throw std::exception"]
+        TypeErasure["Type Erasure<br/>void* pointers<br/>Runtime type info"]
+        ExSem["Exception Semantics<br/>Natural C++ throw<br/>No language runtime"]
+        
+        GenericVec --> TypeErasure
+        GenericStruct --> TypeErasure
+        TypeErasure --> ExSem
+    end
+    
+    PyExCatch --> Boundary
+    LuaExCatch --> Boundary
+    RubyExCatch --> Boundary
+    Boundary --> ExSem
+    
+    ExSem -.->|std::bad_alloc| PyExConvert
+    ExSem -.->|std::exception| PyExConvert
+    ExSem -.->|std::bad_alloc| LuaExConvert
+    ExSem -.->|std::exception| LuaExConvert
+    ExSem -.->|std::bad_alloc| RubyExConvert
+    ExSem -.->|std::exception| RubyExConvert
 ```
 
-**Key Design Decision:**
-- ✅ Reflection layer throws exceptions naturally (C++ semantics)
-- ✅ Each language binding layer (Python, Lua, Ruby) catches and converts
-- ✅ No Python knowledge in reflection layer = reusable across languages
-- ✅ Proxy layer is thin translation layer between C++ and language runtime
+**Architectural Principles:**
+- ✅ **One Reflection Layer** - Pure C++, language-agnostic, reusable across Python/Lua/Ruby
+- ✅ **Exception Semantics** - Natural C++ throw/catch; no Python.h/Lua headers in reflection
+- ✅ **Multiple Binding Layers** - Each language has own proxy layer catching and converting exceptions
+- ✅ **Consistent Pattern** - All bindings follow exception-catcher → converter → language-specific-cleanup flow
+- ✅ **Clear Boundaries** - Exception contract enforced at boundary; reflection layer remains pure
 
 ---
 
