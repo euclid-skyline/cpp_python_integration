@@ -31,6 +31,25 @@ This document defines the complete architectural design for error and exception 
 - **Reliability:** Graceful degradation and recovery from errors
 - **Observability:** Clear error reporting and diagnostic information
 - **Maintainability:** Consistent patterns across all error scenarios
+- **Extensibility:** Clean separation enabling support for Lua, Ruby, and other languages
+
+### Fundamental Architectural Principle
+
+**Reflection layer must remain pure C++ (no language-specific code)**
+
+- ✅ Reflection functions throw standard C++ exceptions naturally
+- ✅ No Python.h, Lua headers, or Ruby headers in reflection layer
+- ✅ Each language binding (Python, Lua, Ruby) has its own proxy/translation layer
+- ✅ Proxy layer responsibility: Catch C++ exceptions → Convert to language-specific errors
+- ⚠️ Do NOT add Python-specific code to reflection_builder.hpp
+
+This design allows:
+- Single reflection implementation serving multiple scripting languages
+- Reflection layer testable in pure C++ without language runtime
+- Easy to add new language bindings (just add new proxy layer)
+- Clean separation of concerns
+
+---
 
 ### Key Design Decisions
 
@@ -920,60 +939,136 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
 }
 ```
 
-### Generic Operations Protection
+### Generic Operations Protection (Pure C++ Layer)
+
+**ARCHITECTURE PRINCIPLE:** The reflection layer must remain pure C++, unaware of Python or any scripting language. Exception handling for Python integration happens at the **boundary layer**, not in reflection functions.
 
 ```cpp
-// reflection_builder.hpp - Updated with exception safety
+// reflection_builder.hpp - Pure C++ (no Python dependencies)
 template <typename T>
-bool generic_vec_append(void *vec_ptr, void *value_ptr)
+void generic_vec_append(void *vec_ptr, void *value_ptr)
 {
+    // PURE C++: No Python code here
+    // Throws std::bad_alloc or std::exception if problems occur
+    // Caller (proxy layer) is responsible for catching and converting
+    
     if (!vec_ptr || !value_ptr) {
-        // Can't set Python error here (not in Python context)
-        // Return false, caller will set error
-        return false;
+        throw std::invalid_argument("vec_ptr or value_ptr is null");
     }
     
+    // May throw std::bad_alloc or copy constructor exceptions
+    static_cast<std::vector<T> *>(vec_ptr)->push_back(
+        *static_cast<T *>(value_ptr));
+    
+    // If we get here, operation succeeded
+}
+
+// Similarly for struct operations - pure C++
+template <typename T>
+void generic_struct_construct(void *ptr)
+{
+    // May throw std::exception during construction
+    // Caller handles it
+    new (ptr) T();
+}
+
+template <typename T>
+void generic_struct_destruct(void *ptr) noexcept
+{
+    // Destructors must NEVER throw
+    // Use noexcept to enforce this contract
     try {
-        static_cast<std::vector<T> *>(vec_ptr)->push_back(
-            *static_cast<T *>(value_ptr));
-        return true;
-    }
-    catch (const std::bad_alloc&) {
-        // Set Python error if we're in Python context
-        if (Py_IsInitialized()) {
-            PyErr_SetString(PyExc_MemoryError, 
-                "Failed to append: out of memory");
-        }
-        return false;
-    }
-    catch (const std::exception& e) {
-        if (Py_IsInitialized()) {
-            PyErr_Format(PyExc_RuntimeError, 
-                "Failed to append: %s", e.what());
-        }
-        ErrorHandler::Instance().RecordError(
-            ErrorSeverity::Error,
-            ErrorSource::CppInternal,
-            "generic_vec_append",
-            e.what()
-        );
-        return false;
-    }
-    catch (...) {
-        if (Py_IsInitialized()) {
-            PyErr_SetString(PyExc_RuntimeError, 
-                "Failed to append: unknown C++ exception");
-        }
-        ErrorHandler::Instance().RecordError(
-            ErrorSeverity::Error,
-            ErrorSource::CppInternal,
-            "generic_vec_append",
-            "Unknown exception"
-        );
-        return false;
+        static_cast<T *>(ptr)->~T();
+    } catch (...) {
+        // Suppress all exceptions - destructors cannot throw
+        // This should never happen with well-behaved types
     }
 }
 ```
+
+**Why this design?**
+- ✅ Reflection layer can be used with **any scripting language** (Python, Lua, Ruby, etc.)
+- ✅ Reflection layer doesn't depend on Python.h
+- ✅ Exception semantics are natural C++ (throw/catch)
+- ✅ Easier to test reflection layer in isolation
+- ✅ Clear separation of concerns
+
+---
+
+### Python Boundary Layer Protection
+
+The **proxy/boundary layer** in `python_proxy.cpp` is responsible for catching C++ exceptions and converting them to Python errors:
+
+```cpp
+// python_proxy.cpp - Python integration layer
+// This layer KNOWS about Python and handles exception conversion
+
+static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
+{
+    auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
+    
+    try {
+        // Call reflection layer - may throw C++ exceptions
+        if (!PyLong_Check(value)) {
+            PyErr_SetString(PyExc_TypeError, "Expected int");
+            return nullptr;
+        }
+        int v = (int)PyLong_AsLong(value);
+        
+        // THIS CAN THROW std::bad_alloc or copy exceptions
+        proxy->bound->append_from_cpp(&v);
+        
+        Py_RETURN_NONE;
+    }
+    catch (const std::bad_alloc&) {
+        // Convert C++ exception → Python exception
+        PyErr_SetString(PyExc_MemoryError, 
+            "Failed to append: out of memory");
+        
+        // Optional: Log to ErrorHandler for diagnostics
+        ErrorHandler::Instance().RecordError(
+            ErrorSeverity::Error,
+            ErrorSource::CppInternal,
+            "VectorProxy_append",
+            "std::bad_alloc"
+        );
+        return nullptr;
+    }
+    catch (const std::exception& e) {
+        // Convert C++ exception → Python exception
+        PyErr_Format(PyExc_RuntimeError, 
+            "Failed to append: %s", e.what());
+        
+        ErrorHandler::Instance().RecordError(
+            ErrorSeverity::Error,
+            ErrorSource::CppInternal,
+            "VectorProxy_append",
+            e.what()
+        );
+        return nullptr;
+    }
+    catch (...) {
+        // Unknown C++ exception → Python exception
+        PyErr_SetString(PyExc_RuntimeError, 
+            "Failed to append: unknown C++ exception");
+        
+        ErrorHandler::Instance().RecordError(
+            ErrorSeverity::Error,
+            ErrorSource::CppInternal,
+            "VectorProxy_append",
+            "Unknown exception"
+        );
+        return nullptr;
+    }
+}
+```
+
+**Key Points:**
+- ✅ Reflection layer (generic_vec_append) remains pure C++
+- ✅ Proxy layer catches C++ exceptions at the boundary
+- ✅ PyErr_SetString/Format called ONLY in proxy layer
+- ✅ Error logging added at boundary where Python context is guaranteed
+- ✅ Maintains architectural separation of concerns
 
 ---
 
@@ -1496,6 +1591,60 @@ if (!result) {
 
 ---
 
+## Architectural Layers for Exception Handling
+
+**Critical Principle:** Maintain clear separation between language-agnostic reflection layer and language-specific proxy layers.
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  PYTHON BINDING LAYER (python_proxy.cpp)                           │
+│  ═══════════════════════════════════════════════════════════════   │
+│  • Knows about Python.h and PyErr_SetString                        │
+│  • Catches C++ exceptions from reflection layer                    │
+│  • Converts exceptions → PyErr_SetString/Format                    │
+│  • Handles reference counting with Py_INCREF/DECREF                │
+│  • Logs errors via ErrorHandler (diagnostics)                      │
+│  • Returns nullptr or -1 to Python C API                           │
+│                                                                    │
+│  try {                                                             │
+│      reflection_func();  // May throw C++ exceptions               │
+│  } catch (const std::exception& e) {                               │
+│      PyErr_SetString(...);  // Convert to Python error             │
+│      return nullptr;        // Return per Python contract          │
+│  }                                                                 │
+└────────────────────────────────────────────────────────────────────┘
+                                ↕
+┌────────────────────────────────────────────────────────────────────┐
+│  REFLECTION LAYER (reflection_builder.hpp)                         │
+│  ═══════════════════════════════════════════════════════════════   │
+│  • PURE C++ - No Python.h dependencies                             │
+│  • Template metaprogramming and type erasure                       │
+│  • Throws std::exception on errors (natural C++ semantics)         │
+│  • Can be used with ANY scripting language:                        │
+│    - Python bindings via proxy layer above                         │
+│    - Lua bindings via different proxy layer                        │
+│    - Ruby bindings via different proxy layer                       │
+│  • Functions are:                                                  │
+│    - generic_vec_append(void*, void*) → throws on OOM              │
+│    - generic_struct_construct(void*) → throws on error             │
+│    - generic_struct_destruct(void*) → noexcept                     │
+│                                                                    │
+│  template<typename T>                                              │
+│  void generic_vec_append(void* vec, void* val) {                   │
+│      vec->push_back(val);  // May throw - normal C++               │
+│      // No Python code here!                                       │
+│  }                                                                 │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decision:**
+- ✅ Reflection layer throws exceptions naturally (C++ semantics)
+- ✅ Each language binding layer (Python, Lua, Ruby) catches and converts
+- ✅ No Python knowledge in reflection layer = reusable across languages
+- ✅ Proxy layer is thin translation layer between C++ and language runtime
+
+---
+
 ## Implementation Roadmap
 
 ### Phase 1: Foundation (Week 1)
@@ -1526,26 +1675,28 @@ if (!result) {
 ### Phase 2: Boundary Protection (Week 2)
 
 **Tasks:**
-1. Fix Issue 50 (Critical)
-   - Add try-catch to `generic_vec_append()`
-   - Add try-catch to `generic_struct_construct()`
-   - Make `generic_struct_destruct()` noexcept
+1. Fix Issue 50 at the **Boundary Layer** (NOT in reflection layer)
+   - Wrap all `VectorProxy_*` functions with try-catch
+   - Wrap all `StructProxy_*` functions with try-catch
+   - Convert C++ exceptions to PyErr_SetString/Format
+   - Log exceptions via ErrorHandler
 
-2. Protect all Python C API functions
-   - Wrap all `VectorProxy` operations
-   - Wrap all `StructProxy` operations
-   - Wrap all module-level operations
+2. DO NOT modify reflection_builder.hpp to contain Python code
+   - Keep reflection layer pure C++ (can be used with any language)
+   - Reflection functions can throw exceptions naturally
+   - Proxy layer is responsible for catching and converting
 
 3. Testing
    - Memory allocation failure tests
-   - Exception propagation tests
-   - Boundary crossing tests
+   - Exception propagation tests at boundary
+   - Verify reflection layer works in pure C++ context
+   - Boundary crossing tests with Python integration
 
 **Deliverables:**
-- Updated `reflection_builder.hpp`
-- Updated `python_proxy.cpp`
-- Updated `cpp_module.cpp`
-- Stress test suite
+- Updated `python_proxy.cpp` (ALL proxy functions wrapped with try-catch)
+- Updated `cpp_module.cpp` (module-level operations protected)
+- Tests verifying boundary protection
+- Document showing architectural separation maintained
 
 ---
 
@@ -1628,32 +1779,48 @@ if (!result) {
 
 This architecture provides:
 
+✅ **Architectural Separation of Concerns**
+- **Reflection Layer (Pure C++):** Language-agnostic, throws exceptions naturally
+- **Proxy Layer (Python):** Catches exceptions and converts to PyErr_SetString
+- **Application Layer:** Manages state, recovery, and diagnostics
+- Supports future bindings to Lua, Ruby, or other languages
+
 ✅ **Complete bidirectional error handling**
 - Python → C++: Exception inspection and translation
-- C++ → Python: Exception catching and PyErr_SetString
+- C++ → Python: Exception catching at boundary, conversion to Python errors
+- No Python code in reflection layer
 
 ✅ **Layered defense**
-- Python: try/except with error context
-- Boundary: ExceptionTranslator and boundary protection
-- C++: ErrorHandler and state management
+- C++ Reflection: Pure C++ exceptions (natural semantics)
+- Boundary: Try-catch blocks converting C++ → Python exceptions
+- Python: try/except with error context and recovery logic
+- Application: ErrorHandler, state management, monitoring
 
 ✅ **Graceful degradation**
 - Circuit breaker prevents cascade failures
 - State machine manages application health
 - Recovery manager provides multiple strategies
+- All errors logged for diagnostics
 
 ✅ **Observability**
-- Centralized error logging
-- Detailed error records
+- Centralized error logging via ErrorHandler
+- Detailed error records with context
 - Traceback preservation
+- Exception source tracking (C++, Python, boundary)
 
 ✅ **Maintainability**
 - Consistent patterns across codebase
-- Reusable components
+- Reusable components (ErrorHandler, StateManager, etc.)
 - Clear separation of concerns
+- Easy to extend for new bindings without touching reflection layer
+
+✅ **Extensibility**
+- Adding new scripting language requires only new proxy layer
+- Reflection layer unchanged
+- ErrorHandler and StateManager shared across all bindings
 
 ---
 
-**Document Status:** Complete  
+**Document Status:** Updated - Corrected architectural separation (v2.1)  
 **Next Steps:** Begin Phase 1 implementation  
 **Review Date:** March 11, 2026
