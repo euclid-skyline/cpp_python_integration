@@ -1,27 +1,36 @@
 # Error and Exception Handling in C++/Python Integration
 
-**Document Version:** 2.2  
+**Document Version:** 2.3  
 **Date:** March 5, 2026  
 **Related Issue:** Issue 50 - Missing Exception Safety Across Python C API Boundary  
 **Updates:** 
-- Added architectural clarification on three-layer exception flow and decision tree for informing Python vs silent handling
-- Added comprehensive Python Script Error Handling Guide with four response strategies and recommended patterns
-- Added foundational "Errors vs Exceptions" section with detailed C++ and Python examples
+- Restructured for logical flow: Foundation → Problem → Architecture → Solutions → Implementation → Best Practices → Validation
+- Organized in 5 progressive parts: Foundation, Problem Definition, Architecture Design, Implementation, and Testing
 
 ---
 
 ## Table of Contents
 
+### **PART 1: Foundation & Understanding**
 1. [Overview](#overview)
 2. [Errors vs Exceptions: Foundational Concepts](#errors-vs-exceptions-foundational-concepts)
 3. [Current State Analysis](#current-state-analysis)
-4. [Error Flow Directions](#error-flow-directions)
-5. [Architectural Clarification: Exception Flow Between Layers](#architectural-clarification-exception-flow-between-layers)
-6. [Available Strategies](#available-strategies)
-7. [Implementation Guide](#implementation-guide)
-8. [Best Practices](#best-practices)
-9. [Python Script Error Handling Guide](#python-script-error-handling-guide)
-10. [Testing Strategies](#testing-strategies)
+
+### **PART 2: The Problem**
+4. [The Problem: C++ Exceptions Cross Python Boundary](#the-problem-c-exceptions-cross-python-boundary)
+5. [Error Flow Directions](#error-flow-directions)
+
+### **PART 3: Architecture & Design**
+6. [Architectural Clarification: Exception Flow Between Layers](#architectural-clarification-exception-flow-between-layers)
+
+### **PART 4: Solutions & Implementation**
+7. [Available Strategies](#available-strategies)
+8. [Implementation Guide](#implementation-guide)
+
+### **PART 5: Usage & Validation**
+9. [Best Practices](#best-practices)
+10. [Python Script Error Handling Guide](#python-script-error-handling-guide)
+11. [Testing Strategies](#testing-strategies)
 
 ---
 
@@ -423,6 +432,110 @@ bool generic_vec_append(void *vec_ptr, void *value_ptr)
     // These will CRASH Python interpreter!
     return true;
 }
+```
+
+---
+
+## The Problem: C++ Exceptions Cross Python Boundary
+
+### Critical Issue Summary
+
+**Status:** 🔴 **CRITICAL - Unresolved**
+
+Your application has a **dangerous gap** in exception handling at the C++/Python boundary. Here's the exact problem:
+
+```
+[Reflection Layer - Pure C++]
+    std::vector::push_back()
+        ↓
+    ⚠️ THROWS std::bad_alloc (or other exception)
+        │
+        │ Exception propagates UNHANDLED
+        ↓
+[Proxy Layer - No Protection!]
+    VectorProxy_append() 
+        ↓
+        ❌ C++ exception escapes Python C API function
+        │
+        └─ Violates Python C API contract
+                │
+                └─► Python interpreter receives undefined behavior
+                    ↓
+                    CRASH 💥
+```
+
+### Why This Is Critical
+
+| Impact | Severity | Consequence |
+|--------|----------|-------------|
+| **Unhandled C++ Exception** | 🔴 CRITICAL | Python interpreter crashes - No recovery possible |
+| **Stack Unwinding** | 🔴 CRITICAL | Object destructors called in unpredictable state |
+| **Memory State** | 🔴 CRITICAL | Heap corruption possible, data loss |
+| **No Python Handler** | 🔴 CRITICAL | Python script can't catch or handle the error |
+| **Silent Failure Risk** | 🔴 CRITICAL | Appears to be a random crash, not a logic error |
+
+### Real-World Scenario
+
+```python
+# controller.py
+import cpp
+
+# Game tries to add 1 million enemies
+for i in range(1000000):
+    cpp.enemies.append_new()  # Add enemy
+```
+
+```
+Frame 500: Adding enemy 500,000...
+Frame 501: CRASH! 💥
+  → std::bad_alloc thrown (out of memory)
+  → Exception NOT caught by proxy layer
+  → Python interpreter receives corrupted state
+  → Game exits with segmentation fault
+  → Player loses all progress - no error message!
+```
+
+**Python script had NO WAY to catch this** because:
+- ❌ No `try/except` can catch unhandled C++ exceptions crossing the boundary
+- ❌ No error code returned to Python
+- ❌ No Python exception set with `PyErr_SetString()`
+- ❌ C++ exception violates Python C API contract
+
+### The Python C API Contract
+
+Every Python C API function must follow this contract on error:
+
+```
+Functions returning PyObject*:
+    ├─ Success: Return valid PyObject pointer
+    └─ Failure: Return nullptr AND set Python exception
+
+Functions returning int:
+    ├─ Success: Return 0 (or positive)
+    └─ Failure: Return -1 AND set Python exception
+```
+
+**Your Problem:** 
+- Exception thrown in C++ → No `PyErr_SetString()` called → Contract violated → Undefined behavior
+
+### Affected Code Locations
+
+| Component | Function | Issue | Risk |
+|-----------|----------|-------|------|
+| **reflection_builder.hpp:44** | `generic_vec_append<T>()` | No try-catch around `push_back()` | std::bad_alloc crashes Python |
+| **reflection_builder.hpp:66** | `generic_struct_construct<T>()` | Constructor can throw | Constructor exceptions not caught |
+| **reflection_builder.hpp:72** | `generic_struct_destruct<T>()` | Destructor can throw | Destructors must never throw |
+| **python_proxy.cpp** | All `VectorProxy_*` functions | Call reflection layer without protection | Exceptions escape to Python C API |
+| **python_proxy.cpp** | All `StructProxy_*` functions | Call reflection layer without protection | Exceptions escape to Python C API |
+
+### What Needs to Happen
+
+```
+BEFORE (Current - BROKEN):
+[Reflection]  throws std::bad_alloc  →  [Proxy]  →  [Python C API]  →  💥 CRASH
+
+AFTER (Required - SAFE):
+[Reflection]  throws std::bad_alloc  →  [Proxy] catches  →  PyErr_SetString  →  [Python C API returns nullptr]  →  Python handles with try/except ✅
 ```
 
 ---
@@ -2022,6 +2135,7 @@ def callback():
 
 ---
 
-**Document Status:** Complete  
+**Document Status:** Restructured for clarity (Version 2.3)  
+**Structure:** Foundation → Problem → Architecture → Solutions → Implementation → Usage → Testing  
 **Next Review:** After Issue 50 implementation  
 **Owner:** Development Team
