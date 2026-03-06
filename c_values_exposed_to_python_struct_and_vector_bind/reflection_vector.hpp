@@ -1,6 +1,7 @@
 #pragma once
-#include <vector> // std::vector
-#include <string> // std::string
+#include <vector>    // std::vector
+#include <string>    // std::string
+#include <stdexcept> // std::invalid_argument - for exception-based error handling
 
 #include "reflection_value.hpp" // BoundValue, ValueType
 
@@ -37,12 +38,12 @@ struct VectorInfo
 
     void *(*element_ptr_fn)(void *vec_ptr, std::size_t index);
     // Returns pointer to element at [index].
-    // Bounds-checked: returns nullptr if index >= size().
+    // Throws: std::invalid_argument if vec_ptr is null, std::out_of_range if index >= size().
     // Generated: generic_vec_element_ptr<ElementType>
 
-    bool (*append_fn)(void *vec_ptr, void *value_ptr);
+    void (*append_fn)(void *vec_ptr, void *value_ptr);
     // Appends *value_ptr (ElementType*) to vector.
-    // Return: true on success, false on error.
+    // Throws: std::invalid_argument if pointers are null, std::bad_alloc if allocation fails.
     // Generated: generic_vec_append<ElementType>
 
     void *(*create_empty_vec_fn)();
@@ -128,9 +129,16 @@ public:
     // ------------------------------------------------------------
     // append() — required by VectorProxy
     // ------------------------------------------------------------
-    bool append_from_cpp(void *value_ptr)
+    // Modified: Changed return type from bool to void (March 2026).
+    // Rationale: append_fn now throws exceptions (std::invalid_argument, std::bad_alloc)
+    //            instead of returning bool for error reporting.
+    // Throws: std::invalid_argument if append_fn is null or if append_fn throws.
+    //         std::bad_alloc if memory allocation fails during append.
+    void append_from_cpp(void *value_ptr)
     {
-        return m_info->append_fn ? m_info->append_fn(raw_vector(), value_ptr) : false;
+        if (!m_info->append_fn)
+            throw std::invalid_argument("append_fn is null");
+        m_info->append_fn(raw_vector(), value_ptr);
     }
 
 private:

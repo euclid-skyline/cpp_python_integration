@@ -937,7 +937,8 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     }
 
     // append_from_cpp performs copy into the destination vector.
-    bool append_ok = vec->append_from_cpp(new_instance);
+    // Now throws exception on failure instead of returning bool.
+    vec->append_from_cpp(new_instance);
 
     // Destroy temporary object before releasing raw storage.
     if (constructed && sinfo->destruct_fn)
@@ -945,12 +946,6 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
         sinfo->destruct_fn(new_instance);
     }
     ::operator delete(new_instance);
-
-    if (!append_ok)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to append new struct instance");
-        return nullptr;
-    }
 
     // Get the last element (the one we just added)
     std::size_t last_idx = vec->size() - 1;
