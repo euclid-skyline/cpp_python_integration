@@ -1181,6 +1181,24 @@ sequenceDiagram
     PyScript->>PyScript: except ValueError as e:<br/>handle(e)
 ```
 
+**Scenario 1 Explanation: Python-Initiated Operation with Boundary Exception**
+
+This scenario demonstrates a typical Python script operation that triggers an error at the C++ boundary:
+
+1. **Python accesses C++ collection**: The Python script calls `cpp.enemies[0]` to access the first enemy in the vector. This goes through the C++ API layer to the Python C API's `VectorProxy_getitem` function, which successfully returns a `StructProxy` object representing the enemy.
+
+2. **Python modifies C++ data**: The script then attempts to set `enemy.health = -1` (an invalid negative health value). This triggers `StructProxy_setattro` in the Python C API boundary layer.
+
+3. **Boundary catches and converts exception**: Inside the Python C API layer, the C++ code detects the invalid value and throws a C++ exception. The boundary layer's try-catch block immediately catches this exception, converts it to a Python exception by calling `PyErr_SetString(PyExc_ValueError, ...)`, and returns `-1` (the Python C API's error indicator for setattro).
+
+4. **Python handles the exception**: Control returns to the Python script with the exception indicator set. Python's runtime detects this and raises a `ValueError` exception, which the script catches in its `except ValueError as e:` block and handles appropriately.
+
+**Key Points**: 
+- The C++ exception never enters Python—it's caught and converted at the boundary
+- The Python C API contract is maintained (`-1` return + exception set)
+- Python code can handle the error using standard Python exception mechanisms
+- No C++ exception semantics leak into the Python interpreter
+
 ### Scenario 2: C++ → Python → C++ (Error Propagation)
 
 ```mermaid
@@ -1200,6 +1218,29 @@ sequenceDiagram
     
     CppMain->>CppMain: Decide recovery action
 ```
+
+**Scenario 2 Explanation: C++-Initiated Python Call with Error Propagation**
+
+This scenario shows how Python exceptions propagate back to C++ when the C++ host invokes Python code:
+
+1. **C++ invokes Python**: The C++ main loop calls `PyObject_CallObject` to execute a Python function (typically the main update function like `update_values()`). This transfers control to the Python interpreter.
+
+2. **Python executes and encounters error**: The Python interpreter begins executing the script. During execution, the script encounters an error condition and raises a Python exception (`raise ValueError`).
+
+3. **Python returns error state to C++**: The Python interpreter cannot propagate the exception directly to C++ (different exception models). Instead, it returns `nullptr` from `PyObject_CallObject` and sets the Python error indicator. C++ code checks `PyErr_Occurred()` to detect that an exception occurred.
+
+4. **C++ extracts error information**: The C++ code uses `PythonErrorInspector::GetCurrentError()` to extract detailed information about the Python exception—its type, message, and traceback. This converts Python exception semantics into C++ data structures.
+
+5. **C++ records error centrally**: The extracted error information is passed to the centralized `ErrorHandler` via `RecordPythonError()`. This logs the error with proper context, timestamps, and marks it as originating from Python.
+
+6. **C++ decides recovery action**: Based on the error severity and application state, the C++ main loop decides on a recovery action—retry the operation, enter safe mode, continue with degraded functionality, or shutdown.
+
+**Key Points**:
+- Python exceptions don't propagate as C++ exceptions—they're signaled via return codes and error indicators
+- C++ must explicitly check for Python errors after every Python C API call
+- Error details are preserved through the translation process (type, message, traceback)
+- The centralized error handler provides a single point for logging, metrics, and recovery decisions
+- C++ maintains control over application state and recovery strategy even when errors originate in Python
 
 ---
 
@@ -1223,6 +1264,48 @@ stateDiagram-v2
     GracefulShutdown --> [*]
     EmergencyShutdown --> [*]
 ```
+
+**State Transitions Explanation**
+
+This state machine diagram defines how the application manages its operational state throughout the error lifecycle, ensuring controlled degradation and recovery:
+
+**State Definitions:**
+
+1. **Running** (Normal Operation): The application is functioning normally with all features available. This is the healthy steady state where Python integration, C++ operations, and all subsystems work without issues.
+
+2. **ErrorHandling** (Transient Recovery State): When an error occurs, the application immediately transitions here. This is a short-lived state where the system analyzes the error, logs details, and determines the appropriate recovery strategy. The application does not process normal operations while in this state.
+
+3. **SafeMode** (Degraded Operation): If recovery from ErrorHandling fails (e.g., retry exhausted, rollback unsuccessful), the application enters this protective state. Non-essential features are disabled, risky operations are blocked, but core functionality continues. This allows the application to remain operational while preventing further damage.
+
+4. **Shutdown** (Critical Failures): When a critical error occurs that cannot be recovered (memory corruption, system-level failure, security breach), the application transitions directly to shutdown, bypassing recovery attempts.
+
+5. **GracefulShutdown** (Controlled Exit): A clean shutdown process that saves state, releases resources properly, closes Python interpreter cleanly, and logs final status. Triggered by user request, timeout in SafeMode, or after successful error mitigation when continued operation is unsafe.
+
+6. **EmergencyShutdown** (Immediate Exit): An immediate termination with minimal cleanup. Triggered by multiple cascading failures in SafeMode or when graceful shutdown itself fails. Prioritizes stopping potential damage over clean resource release.
+
+**Transition Paths:**
+
+- **Running → ErrorHandling**: Any error (Python exception, C++ exception, API violation) triggers this transition. The error is captured with full context.
+
+- **ErrorHandling → Running**: Successful recovery (retry succeeded, rollback completed, issue auto-corrected). Recovery counter resets and normal operations resume.
+
+- **ErrorHandling → SafeMode**: Recovery attempts failed or error severity indicates degraded mode is necessary. Application continues with reduced functionality.
+
+- **ErrorHandling → Shutdown**: Critical error detected (unrecoverable memory error, system exception, security violation). Immediate transition to shutdown process.
+
+- **SafeMode → Running**: Conditions that caused SafeMode are resolved (external resource restored, error frequency decreased, manual intervention completed). Full functionality restored.
+
+- **SafeMode → GracefulShutdown**: User-initiated shutdown request while in SafeMode, or timeout expires (application has been in SafeMode too long without recovery).
+
+- **SafeMode → EmergencyShutdown**: Multiple failures occur even in SafeMode (indicates systemic problem), or SafeMode itself encounters critical errors.
+
+**Design Rationale:**
+
+- **Progressive Degradation**: The state machine implements graceful degradation—errors don't immediately crash the application but instead move through recovery stages.
+- **Fail-Safe Defaults**: Critical errors bypass recovery and go straight to shutdown, preventing prolonged operation in unstable states.
+- **State Isolation**: Each state has clear entry/exit conditions and defined behavior, making the system's response to errors predictable and testable.
+- **Recovery Tracking**: The ErrorHandling state can track retry counts and error patterns to decide whether recovery is viable or degradation is necessary.
+- **Operational Visibility**: External monitoring can observe state transitions to understand application health and trigger alerts when SafeMode or Shutdown states are entered.
 
 ### State Management Implementation
 
@@ -1499,6 +1582,48 @@ public:
 };
 ```
 
+**Pattern 1 Explanation: Command Pattern for Rollback Recovery**
+
+The Command pattern provides a structured way to implement the **Rollback** recovery strategy mentioned in the Recovery Mechanism. When an error occurs during a complex operation, the system can undo changes to restore a consistent state.
+
+**Role in Error Handling:**
+
+1. **State Preservation**: Each command captures the original state before executing (`old_value_`), enabling precise rollback to the pre-operation state if errors occur.
+
+2. **Error Recovery Integration**: When the Recovery Policy Engine decides that "Rollback" is the appropriate strategy (e.g., partial transaction failed), it can traverse the command history and call `Undo()` on executed commands in reverse order.
+
+3. **Granular Rollback**: Instead of rolling back entire system state, commands allow surgical rollback of specific operations. If setting enemy health fails midway through a batch update, only the affected operations are undone.
+
+4. **Audit Trail**: Each command's `GetDescription()` provides human-readable logging for error reports, helping diagnose what operations were attempted and which needed rollback.
+
+**Usage in Error Scenarios:**
+
+```cpp
+std::vector<std::unique_ptr<Command>> transaction;
+
+// Build transaction
+transaction.push_back(std::make_unique<ModifyHealthCommand>(player, 50));
+transaction.push_back(std::make_unique<ModifyScoreCommand>(player, 1000));
+
+// Execute with error handling
+for (size_t i = 0; i < transaction.size(); ++i) {
+    if (!transaction[i]->Execute()) {
+        // Error occurred - rollback all previous commands
+        ErrorHandler::Instance().RecordError(
+            ErrorSeverity::Error, ErrorSource::CppInternal,
+            "Transaction", "Operation failed, rolling back"
+        );
+        
+        for (int j = i - 1; j >= 0; --j) {
+            transaction[j]->Undo();
+        }
+        return false;
+    }
+}
+```
+
+This pattern ensures the application never ends up in a partially-modified, inconsistent state when errors interrupt multi-step operations.
+
 ### Pattern 2: Circuit Breaker
 
 ```cpp
@@ -1595,6 +1720,71 @@ bool CallPythonSafely() {
 }
 ```
 
+**Pattern 2 Explanation: Circuit Breaker for Failure Cascade Prevention**
+
+The Circuit Breaker pattern protects the system from cascading failures by temporarily disabling calls to a failing subsystem (Python interpreter, external API, etc.), giving it time to recover.
+
+**Role in Error Handling:**
+
+1. **Failure Detection**: Tracks consecutive failures. After exceeding `FAILURE_THRESHOLD` (5 failures), the circuit "opens" and blocks all requests to the failing subsystem.
+
+2. **Fast Fail**: When the circuit is open, `AllowRequest()` immediately returns `false` without attempting the operation. This prevents:
+   - Wasting CPU cycles on operations that will likely fail
+   - Accumulating error logs from repeated failures
+   - Overwhelming the failing subsystem with additional requests
+
+3. **Automatic Recovery Testing**: After `TIMEOUT` (30 seconds), the circuit enters "HalfOpen" state and allows limited requests through. If these succeed, the circuit closes and normal operation resumes. If they fail, the circuit reopens.
+
+4. **Integration with State Management**: When Python calls fail repeatedly and the circuit opens, this can trigger a transition to SafeMode where Python integration is disabled but C++ operations continue.
+
+**Three States Explained:**
+
+- **Closed** (Normal): All requests pass through. Failures are counted. This is the healthy state.
+- **Open** (Blocking): All requests are rejected immediately. System waits for timeout before testing recovery. Protects against failure cascades.
+- **HalfOpen** (Testing): Limited requests allowed to test if the subsystem has recovered. Transitions back to Closed after 2 successes, or back to Open on any failure.
+
+**Usage in Error Scenarios:**
+
+```cpp
+// Main loop with circuit breaker protection
+void MainLoop() {
+    CircuitBreaker python_circuit_breaker;
+    
+    while (running) {
+        // Process C++ operations (always allowed)
+        ProcessCppLogic();
+        
+        // Try Python integration with circuit breaker
+        if (python_circuit_breaker.AllowRequest()) {
+            if (CallPythonSafely()) {
+                python_circuit_breaker.RecordSuccess();
+            } else {
+                python_circuit_breaker.RecordFailure();
+                
+                // Check if circuit opened
+                if (python_circuit_breaker.GetState() == CircuitBreaker::State::Open) {
+                    ErrorHandler::Instance().RecordError(
+                        ErrorSeverity::Warning,
+                        ErrorSource::PythonScript,
+                        "CircuitBreaker",
+                        "Python integration circuit opened, entering degraded mode"
+                    );
+                    // Transition to SafeMode
+                    StateManager::Instance().TransitionTo(ApplicationState::SafeMode);
+                }
+            }
+        } else {
+            // Circuit is open - skip Python calls, continue with C++ only
+            LogDebug("Python circuit breaker open - running in degraded mode");
+        }
+        
+        Render();
+    }
+}
+```
+
+This pattern prevents Python exceptions from bringing down the entire application by isolating the failure and allowing degraded operation.
+
 ### Pattern 3: RAII Resource Guard
 
 ```cpp
@@ -1643,6 +1833,125 @@ if (!result) {
 }
 // Automatic cleanup on scope exit
 ```
+
+**Pattern 3 Explanation: RAII Resource Guard for Exception-Safe Cleanup**
+
+RAII (Resource Acquisition Is Initialization) ensures that resources are automatically released when errors occur, preventing resource leaks even when exceptions are thrown.
+
+**Role in Error Handling:**
+
+1. **Automatic Cleanup on Exception**: When a C++ exception is thrown within a scope, the stack unwinds and all RAII objects' destructors are called automatically. `PyObjectGuard` ensures Python objects are properly decremented (`Py_DECREF`) even if an exception occurs.
+
+2. **Memory Safety**: Python's reference counting requires strict pairing of `Py_INCREF`/`Py_DECREF`. Missing a `Py_DECREF` causes memory leaks; calling it twice causes crashes. RAII eliminates manual management and the associated error risks.
+
+3. **Simplifies Error Paths**: Without RAII, every error path must manually release resources:
+
+```cpp
+// Without RAII - error prone
+PyObject* result = PyObject_CallObject(func, args);
+if (!result) {
+    // Must remember to cleanup before each return
+    return false;
+}
+
+if (SomeCondition()) {
+    Py_DECREF(result);  // Easy to forget!
+    return false;
+}
+
+if (AnotherCondition()) {
+    Py_DECREF(result);  // Duplicated cleanup code
+    return false;
+}
+
+Py_DECREF(result);
+return true;
+```
+
+```cpp
+// With RAII - automatic and safe
+PyObjectGuard<PyObject> result(PyObject_CallObject(func, args));
+if (!result) {
+    return false;  // Guard destructor runs automatically
+}
+
+if (SomeCondition()) {
+    return false;  // Guard destructor runs automatically
+}
+
+if (AnotherCondition()) {
+    return false;  // Guard destructor runs automatically
+}
+
+return true;  // Guard destructor runs automatically
+```
+
+4. **Exception Safety Guarantee**: The guard's destructor is `noexcept`—it never throws exceptions during cleanup, which is critical because throwing from a destructor during stack unwinding causes `std::terminate()`.
+
+5. **Move Semantics**: The guard supports move operations, allowing transfer of ownership without affecting reference counts. This is useful when passing Python objects between functions while maintaining exception safety.
+
+**Usage in Error Scenarios:**
+
+```cpp
+void ComplexPythonOperation() {
+    // Multiple Python objects - all automatically managed
+    PyObjectGuard<PyObject> module(PyImport_ImportModule("controller"));
+    if (!module) {
+        throw std::runtime_error("Failed to import module");
+        // module automatically cleaned up
+    }
+    
+    PyObjectGuard<PyObject> func(PyObject_GetAttrString(module.get(), "update"));
+    if (!func) {
+        throw std::runtime_error("Failed to get function");
+        // Both func and module automatically cleaned up
+    }
+    
+    PyObjectGuard<PyObject> args(PyTuple_New(0));
+    if (!args) {
+        throw std::bad_alloc();
+        // All three objects automatically cleaned up
+    }
+    
+    PyObjectGuard<PyObject> result(PyObject_CallObject(func.get(), args.get()));
+    if (!result) {
+        auto error_info = PythonErrorInspector::GetCurrentError();
+        ErrorHandler::Instance().RecordPythonError(error_info);
+        throw std::runtime_error("Python call failed");
+        // All four objects automatically cleaned up in correct order
+    }
+    
+    // Normal return - all guards destroyed in reverse order
+    // No manual cleanup needed!
+}
+```
+
+**Integration with Boundary Layer:**
+
+The RAII pattern is essential in the Python C API boundary where exceptions can be thrown from C++ code at any point. Combined with `ExceptionTranslator`, it ensures that even when C++ exceptions are caught and converted to Python errors, all Python objects are properly released:
+
+```cpp
+static PyObject* SafeOperation(PyObject* self, PyObject* args) {
+    return ExceptionTranslator::ExecuteReturningPyObject(
+        [&]() -> PyObject* {
+            PyObjectGuard<PyObject> item(ExtractItem(args));
+            if (!item) return nullptr;
+            
+            PyObjectGuard<PyObject> processed(ProcessItem(item.get()));
+            if (!processed) return nullptr;
+            
+            // If exception thrown here, both guards clean up automatically
+            ValidateResult(processed.get());  // may throw
+            
+            // Return ownership to Python
+            return processed.release();
+        },
+        "SafeOperation"
+    );
+}
+```
+
+This pattern makes the Python boundary layer both exception-safe and leak-free, which is critical for reliability in long-running applications.
 
 ---
 
