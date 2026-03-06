@@ -1,9 +1,9 @@
 # Complete Error and Exception Handling Architecture
 ## C++ ↔ Python Integration Design
 
-**Document Version:** 1.0  
-**Date:** March 4, 2026  
-**Status:** Architecture Design Document  
+**Document Version:** 2.0  
+**Date:** March 6, 2026  
+**Status:** Architecture Design Document (Streamlined)
 **Related Issues:** Issue 50-57
 
 ---
@@ -11,16 +11,15 @@
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Architecture Detail Intent](#architecture-detail-intent)
-3. [Architectural Overview](#architectural-overview)
-4. [Component Architecture](#component-architecture)
-5. [Python-Side Error Handling](#python-side-error-handling)
-6. [C++-Side Error Handling](#c-side-error-handling)
-7. [Bidirectional Error Flow](#bidirectional-error-flow)
-8. [State Management During Errors](#state-management-during-errors)
-9. [Recovery Strategies](#recovery-strategies)
-10. [Design Patterns](#design-patterns)
-11. [Implementation Roadmap](#implementation-roadmap)
+2. [Fundamental Architectural Principles](#fundamental-architectural-principles)
+3. [Architecture Detail Intent](#architecture-detail-intent)
+4. [Architectural Overview](#architectural-overview)
+5. [Component Architecture](#component-architecture)
+6. [Bidirectional Error Flow](#bidirectional-error-flow)
+7. [State Management During Errors](#state-management-during-errors)
+8. [Recovery Strategies](#recovery-strategies)
+9. [Design Patterns](#design-patterns)
+10. [Implementation Roadmap](#implementation-roadmap)
 
 ---
 
@@ -34,9 +33,13 @@ This document defines the complete architectural design for error and exception 
 - **Maintainability:** Consistent patterns across all error scenarios
 - **Extensibility:** Clean separation enabling support for Lua, Ruby, and other languages
 
-### Fundamental Architectural Principle
+---
 
-**Reflection layer must remain pure C++ (no language-specific code)**
+## Fundamental Architectural Principles
+
+### Core Principle: Pure C++ Reflection Layer
+
+**The reflection layer must remain pure C++ (no language-specific code)**
 
 - ✅ Reflection functions throw standard C++ exceptions naturally
 - ✅ No Python.h, Lua headers, or Ruby headers in reflection layer
@@ -49,8 +52,6 @@ This design allows:
 - Reflection layer testable in pure C++ without language runtime
 - Easy to add new language bindings (just add new proxy layer)
 - Clean separation of concerns
-
----
 
 ### Key Design Decisions
 
@@ -257,136 +258,368 @@ The diagram maps four major functional areas that work together to handle errors
 
 ## Component Architecture
 
-### Layer 1: Python Script Layer
+The error handling system is organized in three layers: Python scripts with shared infrastructure, Python C API boundary protection, and centralized C++ error management.
+
+### Layer 1: Python Script Layer (Multi-Script Architecture)
 
 **Responsibilities:**
-- Implements business logic
-- Handles domain-specific errors
+- Implements business logic across multiple script modules
+- Handles domain-specific errors using shared infrastructure
 - Provides error recovery at application level
-- Reports errors to C++ host when needed
+- Reports errors to C++ host through centralized error context
+- Supports multiple independent Python scripts (controller, game logic, AI, animation, etc.)
 
-**Error Handling:**
+**Design Philosophy - Three Core Principles:**
+
+1. **Fail Gracefully**: Python scripts should never crash the host C++ application. Errors should be caught, logged, and reported. Application should continue with degraded functionality when possible.
+
+2. **Error Context**: Maintain error state across function calls, provide detailed error information for debugging, and allow C++ host to query error status.
+
+3. **Hierarchical Handling**: Handle errors at the most specific level possible, propagate only when local handling insufficient, and differentiate between recoverable and fatal errors.
+
+**Architecture:** Separation of error infrastructure from business logic
+
+```
+scripts/
+  ├── error_handling.py    # Shared error infrastructure (Layer 1a)
+  ├── controller.py        # Main controller - uses error_handling
+  ├── game_logic.py        # Game mechanics - uses error_handling
+  ├── npc_ai.py            # NPC behavior - uses error_handling
+  └── animation.py         # Animation system - uses error_handling
+```
+
+**Layer 1a: Shared Error Infrastructure**
+
+The `error_handling.py` module provides reusable components for all Python scripts:
+
 ```python
-# controller.py
+# error_handling.py
+"""
+Shared error handling infrastructure for all Python scripts.
+Provides error context, severity tracking, validators, and utilities.
+"""
+
 import logging
+import time
 from enum import Enum
 
 class ErrorSeverity(Enum):
-    INFO = 0      # Informational, can continue
+    """Error severity levels for categorization"""
+    INFO = 0      # Informational, can continue normally
     WARNING = 1   # Potential problem, continue with caution
-    ERROR = 2     # Error occurred, operation failed
-    CRITICAL = 3  # Critical failure, cannot continue
+    ERROR = 2     # Error occurred, operation failed, may degrade
+    CRITICAL = 3  # Critical failure, system unsafe to continue
 
 class ErrorContext:
-    """Maintains error state across Python operations"""
+    """
+    Centralizes error tracking across all Python scripts.
+    Maintains error history and state for C++ host queries.
+    """
     def __init__(self):
         self.errors = []
         self.last_error = None
         self.error_count = 0
         
-    def report_error(self, severity, message, exception=None):
+    def report_error(self, severity, message, exception=None, source="Unknown"):
+        """Record an error with context and source information"""
         error = {
             'severity': severity,
             'message': message,
             'exception': str(exception) if exception else None,
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'source': source  # Which script reported this error
         }
         self.errors.append(error)
         self.last_error = error
         self.error_count += 1
-        logging.error(f"[{severity.name}] {message}")
+        logging.error(f"[{severity.name}] [{source}] {message}")
         
     def clear(self):
+        """Clear error history"""
         self.errors.clear()
         self.last_error = None
+        self.error_count = 0
 
-# Global error context
+    def get_error_summary(self):
+        """Return summary for C++ host to query"""
+        if not self.errors:
+            return None
+        return {
+            'count': self.error_count,
+            'last_error': self.last_error,
+            'has_critical': any(e['severity'] == ErrorSeverity.CRITICAL 
+                               for e in self.errors),
+            'errors_by_source': self._group_by_source()
+        }
+    
+    def _group_by_source(self):
+        """Group errors by source script"""
+        sources = {}
+        for error in self.errors:
+            source = error.get('source', 'Unknown')
+            if source not in sources:
+                sources[source] = []
+            sources[source].append(error)
+        return sources
+
+# Global singleton - all scripts import and use this instance
 error_ctx = ErrorContext()
 
+class DataValidator:
+    """Validates data before C++ operations"""
+    
+    @staticmethod
+    def validate_health(value):
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"Health must be numeric, got {type(value)}")
+        if value < 0:
+            raise ValueError(f"Health cannot be negative: {value}")
+        if value > 1000:
+            raise ValueError(f"Health too large (>1000): {value}")
+        return True
+    
+    @staticmethod
+    def validate_position(x, y):
+        if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
+            raise TypeError("Position coordinates must be numeric")
+        if abs(x) > 10000 or abs(y) > 10000:
+            raise ValueError("Position out of world bounds")
+        return True
+
+class SafeIterator:
+    """Safe iteration over C++ collections"""
+    
+    @staticmethod
+    def iterate_collection(collection, callback, source="SafeIterator"):
+        """Iterate with concurrent modification detection"""
+        try:
+            initial_size = len(collection)
+            
+            for i in range(initial_size):
+                if len(collection) != initial_size:
+                    raise RuntimeError("Collection modified during iteration")
+                
+                try:
+                    callback(collection[i], i)
+                except Exception as e:
+                    error_ctx.report_error(
+                        ErrorSeverity.WARNING,
+                        f"Error processing item {i}: {e}", 
+                        e, 
+                        source
+                    )
+                    continue  # Skip this item
+            return True
+        except RuntimeError as e:
+            error_ctx.report_error(
+                ErrorSeverity.ERROR, 
+                "Iteration failed", 
+                e, 
+                source
+            )
+            return False
+
+# Logging configuration
+logging.basicConfig(
+    filename='python_errors.log',
+    level=logging.ERROR,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+```
+
+**Layer 1b: Business Logic Scripts**
+
+Multiple Python scripts can now reuse the error infrastructure. Each script imports only what it needs and focuses on its domain logic:
+
+**controller.py** - Main update loop:
+
+```python
+# controller.py
+"""Main game controller - orchestrates updates from all subsystems"""
+
+from error_handling import error_ctx, ErrorSeverity, DataValidator, SafeIterator
+
 def update_values():
-    """Main update function with comprehensive error handling"""
+    """
+    Main update function coordinating all subsystems.
+    Called by C++ main loop every frame.
+    """
     try:
-        # === Data Access Operations ===
+        # === Player Data Access ===
         try:
             player_health = cpp.player.health
             if player_health < 0:
                 error_ctx.report_error(
                     ErrorSeverity.WARNING,
-                    f"Invalid health value: {player_health}"
+                    f"Invalid health value: {player_health}",
+                    source="controller"
                 )
                 cpp.player.health = 0  # Auto-correct
         except AttributeError as e:
             error_ctx.report_error(
                 ErrorSeverity.ERROR,
                 "Failed to access player.health",
-                e
-            )
-            return False  # Cannot continue without player data
-            
-        # === Collection Operations ===
-        try:
-            new_enemy = cpp.enemies.append_new()
-            new_enemy.health = 100
-            new_enemy.x = 5.0
-        except MemoryError as e:
-            error_ctx.report_error(
-                ErrorSeverity.CRITICAL,
-                "Out of memory creating enemy",
-                e
-            )
-            return False  # Critical - stop operations
-        except RuntimeError as e:
-            error_ctx.report_error(
-                ErrorSeverity.ERROR,
-                "Failed to create enemy",
-                e
-            )
-            # Continue - enemy creation failed but not critical
-            
-        # === Vector Operations ===
-        try:
-            for i, enemy in enumerate(cpp.enemies):
-                try:
-                    enemy.health -= 10
-                    if enemy.health <= 0:
-                        # Mark for deletion (actual deletion done by C++)
-                        enemy.health = -1
-                except (ValueError, TypeError) as e:
-                    error_ctx.report_error(
-                        ErrorSeverity.WARNING,
-                        f"Failed to update enemy {i}",
-                        e
-                    )
-                    continue  # Skip this enemy, process others
-        except RuntimeError as e:
-            error_ctx.report_error(
-                ErrorSeverity.ERROR,
-                "Vector iteration failed - possible concurrent modification",
-                e
+                e,
+                source="controller"
             )
             return False
             
-        return True  # Success
+        # === Enemy Updates ===
+        def update_enemy(enemy, index):
+            try:
+                DataValidator.validate_health(enemy.health - 10)
+                enemy.health -= 10
+                if enemy.health <= 0:
+                    enemy.health = -1  # Mark for deletion
+            except (ValueError, TypeError) as e:
+                error_ctx.report_error(
+                    ErrorSeverity.WARNING,
+                    f"Failed to update enemy {index}",
+                    e,
+                    source="controller"
+                )
+        
+        if not SafeIterator.iterate_collection(
+            cpp.enemies, 
+            update_enemy, 
+            source="controller"
+        ):
+            return False
+            
+        return True
         
     except Exception as e:
-        # Catchall for unexpected errors
         error_ctx.report_error(
             ErrorSeverity.CRITICAL,
             "Unexpected error in update_values",
-            e
+            e,
+            source="controller"
         )
         return False
 
 def get_error_summary():
     """Return error summary for C++ to query"""
-    if not error_ctx.errors:
-        return None
-    return {
-        'count': error_ctx.error_count,
-        'last_error': error_ctx.last_error,
-        'has_critical': any(e['severity'] == ErrorSeverity.CRITICAL 
-                           for e in error_ctx.errors)
-    }
+    return error_ctx.get_error_summary()
+```
+
+**game_logic.py** - Game mechanics using same error infrastructure:
+
+```python
+# game_logic.py
+"""Game mechanics - spawning, combat, scoring"""
+
+from error_handling import error_ctx, ErrorSeverity, DataValidator
+
+class GameLogic:
+    def __init__(self):
+        self.max_enemies = 1000
+    
+    def spawn_enemy_wave(self, wave_size):
+        """Spawn a wave of enemies with error handling"""
+        spawned = 0
+        
+        for i in range(wave_size):
+            if len(cpp.enemies) >= self.max_enemies:
+                error_ctx.report_error(
+                    ErrorSeverity.WARNING,
+                    f"Enemy limit reached: {len(cpp.enemies)}/{self.max_enemies}",
+                    source="game_logic"
+                )
+                break
+            
+            try:
+                enemy = cpp.enemies.append_new()
+                enemy.health = 100
+                enemy.x = i * 5.0
+                enemy.y = 10.0
+                spawned += 1
+            except MemoryError as e:
+                error_ctx.report_error(
+                    ErrorSeverity.CRITICAL,
+                    "Out of memory spawning enemy",
+                    e,
+                    source="game_logic"
+                )
+                break
+            except RuntimeError as e:
+                error_ctx.report_error(
+                    ErrorSeverity.ERROR,
+                    f"Failed to spawn enemy {i}",
+                    e,
+                    source="game_logic"
+                )
+        
+        return spawned
+    
+    def apply_damage(self, target, damage):
+        """Apply damage with validation"""
+        try:
+            DataValidator.validate_health(target.health - damage)
+            target.health -= damage
+            return True
+        except ValueError as e:
+            error_ctx.report_error(
+                ErrorSeverity.WARNING, 
+                str(e), 
+                e, 
+                source="game_logic"
+            )
+            return False
+
+# Module-level instance
+game_logic = GameLogic()
+```
+
+**npc_ai.py** - NPC behavior using same error infrastructure:
+
+```python
+# npc_ai.py
+"""NPC AI behaviors"""
+
+from error_handling import error_ctx, ErrorSeverity, DataValidator, SafeIterator
+
+def update_npc_ai():
+    """Update all NPC AI logic"""
+    
+    def update_single_npc(npc, index):
+        try:
+            # Calculate target position
+            target_x = cpp.player.x
+            target_y = cpp.player.y
+            
+            DataValidator.validate_position(target_x, target_y)
+            
+            # Move towards player
+            dx = target_x - npc.x
+            dy = target_y - npc.y
+            
+            npc.x += dx * 0.1
+            npc.y += dy * 0.1
+            
+        except (ValueError, TypeError, AttributeError) as e:
+            error_ctx.report_error(
+                ErrorSeverity.WARNING,
+                f"NPC {index} AI update failed",
+                e,
+                source="npc_ai"
+            )
+    
+    return SafeIterator.iterate_collection(
+        cpp.npcs,
+        update_single_npc,
+        source="npc_ai"
+    )
+```
+
+**Benefits of Multi-Script Architecture:**
+
+1. **Modularity**: Each script focuses on its domain (controller, game logic, AI, animation)
+2. **Reusability**: Error infrastructure written once, used everywhere
+3. **Consistency**: All scripts report errors through same `error_ctx` with same severity levels
+4. **Traceability**: Errors tagged with source script name for debugging
+5. **Scalability**: Adding new scripts (physics.py, sound.py, etc.) is trivial - just import error_handling
+6. **Maintainability**: Error handling changes in one place affect all scripts
+7. **C++ Integration**: Single query point returns errors grouped by source script
 ```
 
 ---
@@ -758,402 +991,72 @@ ErrorHandler* ErrorHandler::instance_ = nullptr;
 std::mutex ErrorHandler::mutex_;
 ```
 
----
+**Best Practices for Multi-Script Systems:**
 
-## Python-Side Error Handling
+When building multi-script Python systems (game_logic.py, npc_ai.py, animation.py, etc., all alongside controller.py):
 
-### Design Philosophy
+1. **Centralize Error Infrastructure** in `error_handling.py` - All severity levels, helper classes, and singleton instances
+2. **Import What You Need** - Each script imports only the components it uses
+3. **Establish Clear Ownership** - Each script focuses on its domain responsibility
+4. **Use Error Context for Cross-Script Communication** - C++ queries `error_ctx` to understand Python system health
+5. **Testability & Extensibility** - Error classes unit tested in isolation, new scripts inherit infrastructure
 
-**Principle 1: Fail Gracefully**
-- Python scripts should never crash the host C++ application
-- Errors should be caught, logged, and reported
-- Application should continue with degraded functionality when possible
-
-**Principle 2: Error Context**
-- Maintain error state across function calls
-- Provide detailed error information for debugging
-- Allow C++ host to query error status
-
-**Principle 3: Hierarchical Handling**
-- Handle errors at the most specific level possible
-- Propagate only when local handling is insufficient
-- Differentiate between recoverable and fatal errors
-
-### Error Categories
-
-#### Category 1: Data Validation Errors
-
-```python
-class DataValidator:
-    """Validates data before C++ operations"""
-    
-    @staticmethod
-    def validate_health(value):
-        if not isinstance(value, (int, float)):
-            raise TypeError(f"Health must be numeric, got {type(value)}")
-        if value < 0:
-            raise ValueError(f"Health cannot be negative: {value}")
-        if value > 1000:
-            raise ValueError(f"Health too large (>1000): {value}")
-        return True
-    
-    @staticmethod
-    def validate_position(x, y):
-        if not (isinstance(x, (int, float)) and isinstance(y, (int, float))):
-            raise TypeError("Position coordinates must be numeric")
-        if abs(x) > 10000 or abs(y) > 10000:
-            raise ValueError("Position out of world bounds")
-        return True
-
-def safe_update_enemy(enemy, health, x, y):
-    """Update enemy with validation"""
-    try:
-        DataValidator.validate_health(health)
-        DataValidator.validate_position(x, y)
-        
-        enemy.health = health
-        enemy.x = x
-        enemy.y = y
-        return True
-    except (TypeError, ValueError) as e:
-        error_ctx.report_error(ErrorSeverity.WARNING, 
-                              f"Invalid enemy data: {e}", e)
-        return False
-```
-
-#### Category 2: Resource Exhaustion
-
-```python
-class ResourceMonitor:
-    """Monitors and handles resource limits"""
-    
-    def __init__(self):
-        self.max_enemies = 1000
-        self.max_projectiles = 5000
-        
-    def check_can_spawn_enemy(self):
-        current_count = len(cpp.enemies)
-        if current_count >= self.max_enemies:
-            error_ctx.report_error(
-                ErrorSeverity.WARNING,
-                f"Enemy limit reached: {current_count}/{self.max_enemies}"
-            )
-            return False
-        return True
-    
-    def safe_spawn_enemy(self):
-        if not self.check_can_spawn_enemy():
-            return None
-            
-        try:
-            enemy = cpp.enemies.append_new()
-            return enemy
-        except MemoryError as e:
-            error_ctx.report_error(
-                ErrorSeverity.CRITICAL,
-                "Out of memory spawning enemy", e
-            )
-            return None
-        except RuntimeError as e:
-            error_ctx.report_error(
-                ErrorSeverity.ERROR,
-                "Failed to spawn enemy", e
-            )
-            return None
-
-resource_monitor = ResourceMonitor()
-```
-
-#### Category 3: State Consistency Errors
-
-```python
-class StateGuard:
-    """Ensures consistent state during operations"""
-    
-    def __init__(self):
-        self.in_transaction = False
-        self.rollback_data = {}
-        
-    def begin_transaction(self):
-        """Start atomic operation"""
-        if self.in_transaction:
-            raise RuntimeError("Nested transactions not supported")
-        self.in_transaction = True
-        self.rollback_data.clear()
-        
-    def save_state(self, key, obj, attr):
-        """Save current value for rollback"""
-        if not self.in_transaction:
-            return
-        self.rollback_data[key] = getattr(obj, attr)
-        
-    def commit(self):
-        """Commit transaction"""
-        self.in_transaction = False
-        self.rollback_data.clear()
-        
-    def rollback(self):
-        """Rollback to saved state"""
-        if not self.in_transaction:
-            return
-            
-        for key, value in self.rollback_data.items():
-            # Parse key and restore value
-            # Implementation depends on key format
-            pass
-            
-        self.in_transaction = False
-        self.rollback_data.clear()
-
-state_guard = StateGuard()
-
-def transactional_update():
-    """Update with rollback on error"""
-    state_guard.begin_transaction()
-    try:
-        # Save states before modification
-        state_guard.save_state('player_health', cpp.player, 'health')
-        state_guard.save_state('player_score', cpp.player, 'score')
-        
-        # Perform modifications
-        cpp.player.health -= 10
-        cpp.player.score += 100
-        
-        # If we get here, commit
-        state_guard.commit()
-        return True
-    except Exception as e:
-        # Rollback on any error
-        error_ctx.report_error(ErrorSeverity.ERROR, 
-                              "Transaction failed, rolling back", e)
-        state_guard.rollback()
-        return False
-```
-
-#### Category 4: Iteration Safety
-
-```python
-class SafeIterator:
-    """Safe iteration over C++ collections"""
-    
-    @staticmethod
-    def iterate_enemies(callback):
-        """Iterate with concurrent modification detection"""
-        try:
-            # Take snapshot of size
-            initial_size = len(cpp.enemies)
-            
-            for i in range(initial_size):
-                # Check size hasn't changed
-                if len(cpp.enemies) != initial_size:
-                    raise RuntimeError(
-                        "Collection modified during iteration"
-                    )
-                
-                try:
-                    callback(cpp.enemies[i], i)
-                except Exception as e:
-                    error_ctx.report_error(
-                        ErrorSeverity.WARNING,
-                        f"Error processing enemy {i}: {e}", e
-                    )
-                    continue  # Skip this item
-                    
-            return True
-        except RuntimeError as e:
-            error_ctx.report_error(ErrorSeverity.ERROR, 
-                                  "Iteration failed", e)
-            return False
-
-# Usage
-def update_all_enemies():
-    def update_one(enemy, index):
-        enemy.health -= 1
-    
-    SafeIterator.iterate_enemies(update_one)
-```
-
----
-
-## C++-Side Error Handling
-
-### Boundary Protection
-
-**All functions exposed to Python must be protected:**
+**Boundary Protection - All functions exposed to Python must catch C++ exceptions:**
 
 ```cpp
-// Example: VectorProxy_append (python_proxy.cpp)
-static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
-{
-    return ExceptionTranslator::ExecuteReturningPyObject(
-        [&]() -> PyObject* {
-            auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
-            
-            if (!proxy || !proxy->bound) {
-                PyErr_SetString(PyExc_RuntimeError, 
-                    "Internal error: VectorProxy has null BoundVector");
-                return nullptr;
-            }
-            
-            BoundVector *vec = proxy->bound;
-            const VectorInfo *info = vec->info();
-            
-            if (!info) {
-                PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
-                return nullptr;
-            }
-            
-            // This can throw - protected by ExecuteReturningPyObject
-            switch (info->element_type) {
-                case ValueType::Int: {
-                    if (!PyLong_Check(value)) {
-                        PyErr_SetString(PyExc_TypeError, "Expected int");
-                        return nullptr;
-                    }
-                    int v = (int)PyLong_AsLong(value);
-                    vec->append_from_cpp(&v);  // May throw
-                    break;
-                }
-                // ... other cases
-            }
-            
-            Py_RETURN_NONE;
-        },
-        "VectorProxy_append"
-    );
-}
-```
+// This is the key pattern at the proxy/boundary layer:
+// 1. Reflection layer (generic_vec_append) stays pure C++ - throws naturally
+// 2. Proxy layer catches those exceptions and converts to Python errors
 
-### Generic Operations Protection (Pure C++ Layer)
-
-**ARCHITECTURE PRINCIPLE:** The reflection layer must remain pure C++, unaware of Python or any scripting language. Exception handling for Python integration happens at the **boundary layer**, not in reflection functions.
-
-```cpp
-// reflection_builder.hpp - Pure C++ (no Python dependencies)
-template <typename T>
-void generic_vec_append(void *vec_ptr, void *value_ptr)
-{
-    // PURE C++: No Python code here
-    // Throws std::bad_alloc or std::exception if problems occur
-    // Caller (proxy layer) is responsible for catching and converting
-    
-    if (!vec_ptr || !value_ptr) {
-        throw std::invalid_argument("vec_ptr or value_ptr is null");
-    }
-    
-    // May throw std::bad_alloc or copy constructor exceptions
-    static_cast<std::vector<T> *>(vec_ptr)->push_back(
-        *static_cast<T *>(value_ptr));
-    
-    // If we get here, operation succeeded
-}
-
-// Similarly for struct operations - pure C++
-template <typename T>
-void generic_struct_construct(void *ptr)
-{
-    // May throw std::exception during construction
-    // Caller handles it
-    new (ptr) T();
-}
-
-template <typename T>
-void generic_struct_destruct(void *ptr) noexcept
-{
-    // Destructors must NEVER throw
-    // Use noexcept to enforce this contract
-    try {
-        static_cast<T *>(ptr)->~T();
-    } catch (...) {
-        // Suppress all exceptions - destructors cannot throw
-        // This should never happen with well-behaved types
-    }
-}
-```
-
-**Why this design?**
-- ✅ Reflection layer can be used with **any scripting language** (Python, Lua, Ruby, etc.)
-- ✅ Reflection layer doesn't depend on Python.h
-- ✅ Exception semantics are natural C++ (throw/catch)
-- ✅ Easier to test reflection layer in isolation
-- ✅ Clear separation of concerns
-
----
-
-### Python Boundary Layer Protection
-
-The **proxy/boundary layer** in `python_proxy.cpp` is responsible for catching C++ exceptions and converting them to Python errors:
-
-```cpp
-// python_proxy.cpp - Python integration layer
-// This layer KNOWS about Python and handles exception conversion
-
-static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
-{
+static PyObject *VectorProxy_append(PyObject *self, PyObject *value) {
     auto *proxy = reinterpret_cast<VectorProxyObject *>(self);
-    
     try {
-        // Call reflection layer - may throw C++ exceptions
         if (!PyLong_Check(value)) {
             PyErr_SetString(PyExc_TypeError, "Expected int");
             return nullptr;
         }
         int v = (int)PyLong_AsLong(value);
-        
-        // THIS CAN THROW std::bad_alloc or copy exceptions
-        proxy->bound->append_from_cpp(&v);
-        
+        proxy->bound->append_from_cpp(&v);  // May throw
         Py_RETURN_NONE;
     }
     catch (const std::bad_alloc&) {
-        // Convert C++ exception → Python exception
-        PyErr_SetString(PyExc_MemoryError, 
-            "Failed to append: out of memory");
-        
-        // Optional: Log to ErrorHandler for diagnostics
+        PyErr_SetString(PyExc_MemoryError, "Out of memory");
         ErrorHandler::Instance().RecordError(
-            ErrorSeverity::Error,
-            ErrorSource::CppInternal,
-            "VectorProxy_append",
-            "std::bad_alloc"
-        );
+            ErrorSeverity::Error, ErrorSource::CppInternal,
+            "VectorProxy_append", "std::bad_alloc");
         return nullptr;
     }
     catch (const std::exception& e) {
-        // Convert C++ exception → Python exception
-        PyErr_Format(PyExc_RuntimeError, 
-            "Failed to append: %s", e.what());
-        
+        PyErr_Format(PyExc_RuntimeError, "Failed to append: %s", e.what());
         ErrorHandler::Instance().RecordError(
-            ErrorSeverity::Error,
-            ErrorSource::CppInternal,
-            "VectorProxy_append",
-            e.what()
-        );
-        return nullptr;
-    }
-    catch (...) {
-        // Unknown C++ exception → Python exception
-        PyErr_SetString(PyExc_RuntimeError, 
-            "Failed to append: unknown C++ exception");
-        
-        ErrorHandler::Instance().RecordError(
-            ErrorSeverity::Error,
-            ErrorSource::CppInternal,
-            "VectorProxy_append",
-            "Unknown exception"
-        );
+            ErrorSeverity::Error, ErrorSource::CppInternal,
+            "VectorProxy_append", e.what());
         return nullptr;
     }
 }
 ```
 
-**Key Points:**
-- ✅ Reflection layer (generic_vec_append) remains pure C++
-- ✅ Proxy layer catches C++ exceptions at the boundary
-- ✅ PyErr_SetString/Format called ONLY in proxy layer
-- ✅ Error logging added at boundary where Python context is guaranteed
-- ✅ Maintains architectural separation of concerns
+**Reflection Layer Remains Pure C++:**
+
+```cpp
+// reflection_builder.hpp - Pure C++, no Python code
+template <typename T>
+void generic_vec_append(void *vec_ptr, void *value_ptr) {
+    if (!vec_ptr || !value_ptr) {
+        throw std::invalid_argument("vec_ptr or value_ptr is null");
+    }
+    // May throw std::bad_alloc or copy constructor exceptions
+    static_cast<std::vector<T> *>(vec_ptr)->push_back(
+        *static_cast<T *>(value_ptr));
+}
+```
+
+**Why this separation?**
+- ✅ Reflection layer can be used with any scripting language (Python, Lua, Ruby)
+- ✅ Reflection layer doesn't depend on Python.h or any language headers
+- ✅ Exception semantics are natural C++ (throw/catch)
+- ✅ Easier to test reflection layer in pure C++ context
+- ✅ Clear separation of concerns - proxy catches & converts, reflection throws naturally
 
 ---
 
