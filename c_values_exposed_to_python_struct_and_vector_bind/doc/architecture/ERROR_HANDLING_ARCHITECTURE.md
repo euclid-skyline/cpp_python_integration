@@ -1036,20 +1036,139 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value) {
 }
 ```
 
-**Reflection Layer Remains Pure C++:**
+**Reflection Layer Remains Pure C++ - Required Changes:**
+
+The reflection layer (`reflection_builder.hpp`) needs modifications to properly throw exceptions instead of returning error codes. However, it must remain pure C++ with no Python-specific code.
+
+**1. Change `generic_vec_append` - Use exceptions instead of bool:**
 
 ```cpp
-// reflection_builder.hpp - Pure C++, no Python code
+// BEFORE (returns bool - silent failure):
+template <typename T>
+bool generic_vec_append(void *vec_ptr, void *value_ptr) {
+    if (!vec_ptr || !value_ptr)
+        return false;  // ❌ Silent failure, no error details
+    static_cast<std::vector<T> *>(vec_ptr)->push_back(
+        *static_cast<T *>(value_ptr));
+    return true;
+}
+
+// AFTER (throws exceptions - meaningful errors):
 template <typename T>
 void generic_vec_append(void *vec_ptr, void *value_ptr) {
-    if (!vec_ptr || !value_ptr) {
+    if (!vec_ptr || !value_ptr)
         throw std::invalid_argument("vec_ptr or value_ptr is null");
-    }
-    // May throw std::bad_alloc or copy constructor exceptions
+    // push_back throws std::bad_alloc automatically if allocation fails
     static_cast<std::vector<T> *>(vec_ptr)->push_back(
         *static_cast<T *>(value_ptr));
 }
 ```
+
+**Why throw for null pointers?**
+- Without check: Dereferencing null causes segmentation fault (crash, no recovery)
+- With exception: Controlled error with meaningful message, boundary layer can catch and convert to Python error
+
+**2. Add `noexcept` to `generic_struct_destruct`:**
+
+```cpp
+// BEFORE:
+template <typename T>
+void generic_struct_destruct(void *ptr) {
+    static_cast<T *>(ptr)->~T();
+}
+
+// AFTER (never throws):
+template <typename T>
+void generic_struct_destruct(void *ptr) noexcept {
+    try {
+        if (ptr) {
+            static_cast<T *>(ptr)->~T();
+        }
+    } catch (...) {
+        // Destructors must never throw - suppress all exceptions
+    }
+}
+```
+
+**Why `noexcept`?** Destructors throwing during stack unwinding causes `std::terminate()`.
+
+**3. Change `generic_vec_element_ptr` - Throw on out of bounds:**
+
+```cpp
+// BEFORE (returns nullptr - silent failure):
+template <typename T>
+void *generic_vec_element_ptr(void *vec_ptr, std::size_t index) {
+    if (!vec_ptr)
+        return nullptr;  // ❌ Silent failure
+    auto *vec = static_cast<std::vector<T> *>(vec_ptr);
+    if (index >= vec->size())
+        return nullptr;  // ❌ No indication of why it failed
+    return &(*vec)[index];
+}
+
+// AFTER (throws exceptions):
+template <typename T>
+void *generic_vec_element_ptr(void *vec_ptr, std::size_t index) {
+    if (!vec_ptr)
+        throw std::invalid_argument("vec_ptr is null");
+    auto *vec = static_cast<std::vector<T> *>(vec_ptr);
+    if (index >= vec->size())
+        throw std::out_of_range("Index out of bounds");
+    return &(*vec)[index];
+}
+```
+
+**4. Add `noexcept` to query operations:**
+
+```cpp
+// generic_vec_size - Never fails, mark as noexcept for optimization:
+template <typename T>
+std::size_t generic_vec_size(void *vec_ptr) noexcept {
+    if (!vec_ptr)
+        return 0;
+    return static_cast<std::vector<T> *>(vec_ptr)->size();
+}
+
+// generic_vec_destroy - Cleanup should never throw:
+template <typename T>
+void generic_vec_destroy(void *vec_ptr) noexcept {
+    if (!vec_ptr)
+        return;
+    delete static_cast<std::vector<T> *>(vec_ptr);
+}
+```
+
+**5. Add validation to `generic_struct_construct`:**
+
+```cpp
+// BEFORE:
+template <typename T>
+void generic_struct_construct(void *ptr) {
+    new (ptr) T();  // Placement new on null is undefined behavior
+}
+
+// AFTER:
+template <typename T>
+void generic_struct_construct(void *ptr) {
+    if (!ptr)
+        throw std::invalid_argument("ptr is null");
+    new (ptr) T();  // T's constructor exceptions propagate naturally
+}
+```
+
+**Summary of Reflection Layer Changes:**
+
+✅ **Do:**
+- Change return types from `bool` to `void` and throw exceptions
+- Add `noexcept` to destructors and cleanup functions  
+- Add null pointer checks with meaningful exception messages
+- Add bounds checking with `std::out_of_range`
+- Let standard library exceptions (`std::bad_alloc`, constructor exceptions) propagate naturally
+
+❌ **Don't:**
+- Add `#include <Python.h>` or any language-specific code
+- Catch and convert exceptions here (that's the proxy layer's job)
+- Change the pure C++ nature - keep it testable without any language runtime
 
 **Why this separation?**
 - ✅ Reflection layer can be used with any scripting language (Python, Lua, Ruby)
@@ -1057,6 +1176,8 @@ void generic_vec_append(void *vec_ptr, void *value_ptr) {
 - ✅ Exception semantics are natural C++ (throw/catch)
 - ✅ Easier to test reflection layer in pure C++ context
 - ✅ Clear separation of concerns - proxy catches & converts, reflection throws naturally
+- ✅ Meaningful error messages aid debugging
+- ✅ Prevents undefined behavior (null dereferences, out of bounds access)
 
 ---
 
@@ -2132,6 +2253,15 @@ NEW FILES:
 
 **cpp_module.hpp** [MODIFY]
 - Add error handling header includes
+
+**reflection_builder.hpp** [MODIFY]
+- `generic_vec_append()` - Change from `bool` return to `void`, throw exceptions
+- `generic_vec_element_ptr()` - Throw `std::invalid_argument` for null, `std::out_of_range` for bounds
+- `generic_struct_construct()` - Add null check, throw `std::invalid_argument`
+- `generic_struct_destruct()` - Add `noexcept`, wrap in try-catch
+- `generic_vec_size()` - Add `noexcept`
+- `generic_vec_destroy()` - Add `noexcept`
+- Keep pure C++ - no Python.h or language-specific code
 
 **controller.py** [MODIFY]
 - Add error_handling imports
