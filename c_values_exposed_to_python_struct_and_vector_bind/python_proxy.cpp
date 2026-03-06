@@ -321,88 +321,102 @@ static PyObject *StructProxy_getattro(PyObject *self, PyObject *attr)
         PyErr_SetString(PyExc_TypeError, "Field name must be a string");
         return nullptr;
     }
-    const FieldInfo *field = proxy->bound->get_field(name);
 
-    if (!field)
+    try
     {
-        PyErr_Format(PyExc_AttributeError, "Unknown field '%s'", name);
-        return nullptr;
-    }
+        const FieldInfo *field = proxy->bound->get_field(name);
 
-    void *fieldPtr = proxy->bound->get_field_ptr(field);
-    if (!fieldPtr)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to resolve field pointer");
-        return nullptr;
-    }
-
-    // Handle directly based on field type
-    switch (field->type)
-    {
-    case ValueType::Int:
-        return PyLong_FromLong(*static_cast<int *>(fieldPtr));
-
-    case ValueType::Float:
-        return PyFloat_FromDouble(*static_cast<float *>(fieldPtr));
-
-    case ValueType::Bool:
-    {
-        ByteBool b = *static_cast<ByteBool *>(fieldPtr);
-        return PyBool_FromLong((b != FALSE_BYTE) ? 1 : 0);
-    }
-
-    case ValueType::String:
-        return PyUnicode_FromString(static_cast<std::string *>(fieldPtr)->c_str());
-
-    case ValueType::Struct:
-    {
-        const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
-        // Issue 57 fix: Validate metadata is present before dereference
-        if (!sinfo)
+        if (!field)
         {
-            PyErr_Format(PyExc_RuntimeError,
-                         "Internal error: Struct field '%s' has null metadata. "
-                         "Check FIELD() registration for this struct field.",
-                         field->name.c_str());
+            PyErr_Format(PyExc_AttributeError, "Unknown field '%s'", name);
             return nullptr;
         }
-        // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
-        // This ensures the nested struct proxy can recalculate its address if parent moves
-        BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
-        PyObject *result = StructProxy_New(bstruct, self); // Issue 5 in Gemini Review: Pass parent to track context
-        if (!result)
-        {
-            delete bstruct;
-        }
-        return result;
-    }
 
-    case ValueType::Vector:
-    {
-        const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
-        // Issue 57 fix: Validate metadata is present before dereference
-        if (!vinfo)
+        void *fieldPtr = proxy->bound->get_field_ptr(field);
+        if (!fieldPtr)
         {
-            PyErr_Format(PyExc_RuntimeError,
-                         "Internal error: Vector field '%s' has null metadata. "
-                         "Check FIELD() registration for this vector field.",
-                         field->name.c_str());
+            PyErr_SetString(PyExc_RuntimeError, "Failed to resolve field pointer");
             return nullptr;
         }
-        // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
-        // This ensures the nested vector proxy can recalculate its address if parent moves
-        BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
-        PyObject *result = VectorProxy_New(bvec, self); // Issue 5 in Gemini Review: Pass parent to track context
-        if (!result)
-        {
-            delete bvec;
-        }
-        return result;
-    }
 
-    default:
-        PyErr_Format(PyExc_RuntimeError, "Unsupported field type: %d",
-                     static_cast<int>(field->type));
+        // Handle directly based on field type
+        switch (field->type)
+        {
+        case ValueType::Int:
+            return PyLong_FromLong(*static_cast<int *>(fieldPtr));
+
+        case ValueType::Float:
+            return PyFloat_FromDouble(*static_cast<float *>(fieldPtr));
+
+        case ValueType::Bool:
+        {
+            ByteBool b = *static_cast<ByteBool *>(fieldPtr);
+            return PyBool_FromLong((b != FALSE_BYTE) ? 1 : 0);
+        }
+
+        case ValueType::String:
+            return PyUnicode_FromString(static_cast<std::string *>(fieldPtr)->c_str());
+
+        case ValueType::Struct:
+        {
+            const StructInfo *sinfo = static_cast<const StructInfo *>(field->type_meta);
+            // Issue 57 fix: Validate metadata is present before dereference
+            if (!sinfo)
+            {
+                PyErr_Format(PyExc_RuntimeError,
+                             "Internal error: Struct field '%s' has null metadata. "
+                             "Check FIELD() registration for this struct field.",
+                             field->name.c_str());
+                return nullptr;
+            }
+            // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
+            // This ensures the nested struct proxy can recalculate its address if parent moves
+            BoundStruct *bstruct = new BoundStruct(field->name, proxy->bound, field->offset, sinfo);
+            PyObject *result = StructProxy_New(bstruct, self); // Issue 5 in Gemini Review: Pass parent to track context
+            if (!result)
+            {
+                delete bstruct;
+            }
+            return result;
+        }
+
+        case ValueType::Vector:
+        {
+            const VectorInfo *vinfo = static_cast<const VectorInfo *>(field->type_meta);
+            // Issue 57 fix: Validate metadata is present before dereference
+            if (!vinfo)
+            {
+                PyErr_Format(PyExc_RuntimeError,
+                             "Internal error: Vector field '%s' has null metadata. "
+                             "Check FIELD() registration for this vector field.",
+                             field->name.c_str());
+                return nullptr;
+            }
+            // Issue 5 fix in Gemini Review: Pass parent struct + field offset instead of raw fieldPtr
+            // This ensures the nested vector proxy can recalculate its address if parent moves
+            BoundVector *bvec = new BoundVector(field->name, proxy->bound, field->offset, vinfo);
+            PyObject *result = VectorProxy_New(bvec, self); // Issue 5 in Gemini Review: Pass parent to track context
+            if (!result)
+            {
+                delete bvec;
+            }
+            return result;
+        }
+
+        default:
+            PyErr_Format(PyExc_RuntimeError, "Unsupported field type: %d",
+                         static_cast<int>(field->type));
+            return nullptr;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Failed to get attribute '%s': %s", name, e.what());
+        return nullptr;
+    }
+    catch (...)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Failed to get attribute '%s': unknown C++ exception", name);
         return nullptr;
     }
 }
@@ -703,7 +717,32 @@ static PyObject *VectorProxy_getitem(PyObject *self, Py_ssize_t index)
         return nullptr;
     }
 
-    void *elemPtr = proxy->bound->element_ptr(index);
+    void *elemPtr = nullptr;
+    try
+    {
+        elemPtr = proxy->bound->element_ptr(index);
+    }
+    catch (const std::out_of_range &e)
+    {
+        PyErr_Format(PyExc_IndexError, "Vector index out of range: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::invalid_argument &e)
+    {
+        PyErr_Format(PyExc_ValueError, "Failed to get element: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::exception &e)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Failed to get element: %s", e.what());
+        return nullptr;
+    }
+    catch (...)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get element: unknown C++ exception");
+        return nullptr;
+    }
+
     if (!elemPtr)
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to get element pointer");
@@ -921,38 +960,79 @@ static PyObject *VectorProxy_append_new(PyObject *self, PyObject *args)
     }
 
     // Allocate raw storage for one struct instance.
-    void *new_instance = ::operator new(sinfo->size);
+    void *new_instance = nullptr;
 
-    bool constructed = false;
-    // Issue 1: construct full object graph (string/vector/nested types included).
-    if (sinfo->construct_fn)
+    try
     {
-        sinfo->construct_fn(new_instance);
-        constructed = true;
+        new_instance = ::operator new(sinfo->size);
+
+        bool constructed = false;
+        // Issue 1: construct full object graph (string/vector/nested types included).
+        if (sinfo->construct_fn)
+        {
+            sinfo->construct_fn(new_instance);
+            constructed = true;
+        }
+        else
+        {
+            // Fallback for incomplete metadata (kept defensive only).
+            std::memset(new_instance, 0, sinfo->size);
+        }
+
+        // append_from_cpp performs copy into the destination vector.
+        // Now throws exception on failure instead of returning bool.
+        vec->append_from_cpp(new_instance);
+
+        // Destroy temporary object before releasing raw storage.
+        if (constructed && sinfo->destruct_fn)
+        {
+            sinfo->destruct_fn(new_instance);
+        }
+        ::operator delete(new_instance);
+
+        // Get the last element (the one we just added)
+        std::size_t last_idx = vec->size() - 1;
+
+        // Return a proxy to the newly added element (using parent + index for Issue 26 fix)
+        BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);
+        return StructProxy_New(bstruct, self); // Pass parent to keep it alive
     }
-    else
+    catch (const std::bad_alloc &)
     {
-        // Fallback for incomplete metadata (kept defensive only).
-        std::memset(new_instance, 0, sinfo->size);
+        if (new_instance)
+        {
+            ::operator delete(new_instance);
+        }
+        PyErr_SetString(PyExc_MemoryError, "Failed to append new struct: out of memory");
+        return nullptr;
     }
-
-    // append_from_cpp performs copy into the destination vector.
-    // Now throws exception on failure instead of returning bool.
-    vec->append_from_cpp(new_instance);
-
-    // Destroy temporary object before releasing raw storage.
-    if (constructed && sinfo->destruct_fn)
+    catch (const std::invalid_argument &e)
     {
-        sinfo->destruct_fn(new_instance);
+        if (new_instance)
+        {
+            ::operator delete(new_instance);
+        }
+        PyErr_Format(PyExc_ValueError, "Failed to append new struct: %s", e.what());
+        return nullptr;
     }
-    ::operator delete(new_instance);
-
-    // Get the last element (the one we just added)
-    std::size_t last_idx = vec->size() - 1;
-
-    // Return a proxy to the newly added element (using parent + index for Issue 26 fix)
-    BoundStruct *bstruct = new BoundStruct(vec->name, vec, last_idx, sinfo);
-    return StructProxy_New(bstruct, self); // Pass parent to keep it alive
+    catch (const std::exception &e)
+    {
+        if (new_instance)
+        {
+            ::operator delete(new_instance);
+        }
+        PyErr_Format(PyExc_RuntimeError, "Failed to append new struct: %s", e.what());
+        return nullptr;
+    }
+    catch (...)
+    {
+        if (new_instance)
+        {
+            ::operator delete(new_instance);
+        }
+        PyErr_SetString(PyExc_RuntimeError, "Failed to append new struct: unknown C++ exception");
+        return nullptr;
+    }
 }
 
 // ------------------------------------------------------------
@@ -995,61 +1075,84 @@ static PyObject *VectorProxy_append_new_vector(PyObject *self, PyObject *args)
         return nullptr;
     }
 
-    if (inner_info->create_empty_vec_fn && inner_info->destroy_vec_fn)
+    try
     {
-        void *temp_vec = inner_info->create_empty_vec_fn();
-        if (!temp_vec)
+        if (inner_info->create_empty_vec_fn && inner_info->destroy_vec_fn)
         {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to create inner vector");
-            return nullptr;
+            void *temp_vec = inner_info->create_empty_vec_fn();
+            if (!temp_vec)
+            {
+                PyErr_SetString(PyExc_RuntimeError, "Failed to create inner vector");
+                return nullptr;
+            }
+            vec->append_from_cpp(temp_vec);
+            inner_info->destroy_vec_fn(temp_vec);
         }
-        vec->append_from_cpp(temp_vec);
-        inner_info->destroy_vec_fn(temp_vec);
+        else
+        {
+            switch (inner_info->element_type)
+            {
+            case ValueType::Int:
+            {
+                std::vector<int> new_inner_vec;
+                vec->append_from_cpp(&new_inner_vec);
+                break;
+            }
+
+            case ValueType::Float:
+            {
+                std::vector<float> new_inner_vec;
+                vec->append_from_cpp(&new_inner_vec);
+                break;
+            }
+
+            case ValueType::Bool:
+            {
+                std::vector<ByteBool> new_inner_vec;
+                vec->append_from_cpp(&new_inner_vec);
+                break;
+            }
+
+            case ValueType::String:
+            {
+                std::vector<std::string> new_inner_vec;
+                vec->append_from_cpp(&new_inner_vec);
+                break;
+            }
+
+            default:
+                PyErr_SetString(PyExc_TypeError, "Unsupported inner vector element type");
+                return nullptr;
+            }
+        }
+
+        // Get the last element (the one we just added)
+        std::size_t last_idx = vec->size() - 1;
+
+        // Return a proxy to the newly added inner vector (using parent + index for Issue 26 fix)
+        BoundVector *bvec = new BoundVector(vec->name, vec, last_idx, inner_info);
+        return VectorProxy_New(bvec, self); // Pass parent to keep it alive
     }
-    else
+    catch (const std::bad_alloc &)
     {
-        switch (inner_info->element_type)
-        {
-        case ValueType::Int:
-        {
-            std::vector<int> new_inner_vec;
-            vec->append_from_cpp(&new_inner_vec);
-            break;
-        }
-
-        case ValueType::Float:
-        {
-            std::vector<float> new_inner_vec;
-            vec->append_from_cpp(&new_inner_vec);
-            break;
-        }
-
-        case ValueType::Bool:
-        {
-            std::vector<ByteBool> new_inner_vec;
-            vec->append_from_cpp(&new_inner_vec);
-            break;
-        }
-
-        case ValueType::String:
-        {
-            std::vector<std::string> new_inner_vec;
-            vec->append_from_cpp(&new_inner_vec);
-            break;
-        }
-
-        default:
-            PyErr_SetString(PyExc_TypeError, "Unsupported inner vector element type");
-            return nullptr;
-        }
+        PyErr_SetString(PyExc_MemoryError, "Failed to append new vector: out of memory");
+        return nullptr;
     }
-
-    // Get the last element (the one we just added)
-    std::size_t last_idx = vec->size() - 1;
-
-    // Return a proxy to the newly added inner vector (using parent + index for Issue 26 fix)
-    BoundVector *bvec = new BoundVector(vec->name, vec, last_idx, inner_info);
-    return VectorProxy_New(bvec, self); // Pass parent to keep it alive
+    catch (const std::invalid_argument &e)
+    {
+        PyErr_Format(PyExc_ValueError, "Failed to append new vector: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::exception &e)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Failed to append new vector: %s", e.what());
+        return nullptr;
+    }
+    catch (...)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to append new vector: unknown C++ exception");
+        return nullptr;
+    }
 }
 
 // ------------------------------------------------------------
@@ -1071,128 +1174,156 @@ static PyObject *VectorProxy_append(PyObject *self, PyObject *value)
         return nullptr;
     }
 
-    switch (info->element_type)
+    try
     {
-    // ------------------------------------------------------------
-    // Scalar types
-    // ------------------------------------------------------------
-    case ValueType::Int:
-    {
-        if (!PyLong_Check(value))
+        switch (info->element_type)
         {
-            PyErr_SetString(PyExc_TypeError, "Expected int");
-            return nullptr;
+        // ------------------------------------------------------------
+        // Scalar types
+        // ------------------------------------------------------------
+        case ValueType::Int:
+        {
+            if (!PyLong_Check(value))
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected int");
+                return nullptr;
+            }
+            int v = (int)PyLong_AsLong(value);
+            vec->append_from_cpp(&v);
+            break;
         }
-        int v = (int)PyLong_AsLong(value);
-        vec->append_from_cpp(&v);
-        break;
-    }
 
-    case ValueType::Float:
-    {
-        if (!PyFloat_Check(value))
+        case ValueType::Float:
         {
-            PyErr_SetString(PyExc_TypeError, "Expected float");
-            return nullptr;
+            if (!PyFloat_Check(value))
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected float");
+                return nullptr;
+            }
+            float v = (float)PyFloat_AsDouble(value);
+            vec->append_from_cpp(&v);
+            break;
         }
-        float v = (float)PyFloat_AsDouble(value);
-        vec->append_from_cpp(&v);
-        break;
-    }
 
-    case ValueType::Bool:
-    {
-        int truth = PyObject_IsTrue(value);
-        if (truth < 0)
+        case ValueType::Bool:
         {
-            PyErr_SetString(PyExc_TypeError, "Expected bool");
-            return nullptr;
+            int truth = PyObject_IsTrue(value);
+            if (truth < 0)
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected bool");
+                return nullptr;
+            }
+            ByteBool v = (truth != 0) ? TRUE_BYTE : FALSE_BYTE;
+            vec->append_from_cpp(&v);
+            break;
         }
-        ByteBool v = (truth != 0) ? TRUE_BYTE : FALSE_BYTE;
-        vec->append_from_cpp(&v);
-        break;
-    }
 
-    case ValueType::String:
-    {
-        if (!PyUnicode_Check(value))
+        case ValueType::String:
         {
-            PyErr_SetString(PyExc_TypeError, "Expected string");
-            return nullptr;
-        }
-        PyObject *utf8 = PyUnicode_AsUTF8String(value);
-        if (!utf8)
-        {
-            return nullptr;
-        }
-        const char *s = PyBytes_AsString(utf8);
-        if (!s)
-        {
+            if (!PyUnicode_Check(value))
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected string");
+                return nullptr;
+            }
+            PyObject *utf8 = PyUnicode_AsUTF8String(value);
+            if (!utf8)
+            {
+                return nullptr;
+            }
+            const char *s = PyBytes_AsString(utf8);
+            if (!s)
+            {
+                Py_DECREF(utf8);
+                return nullptr;
+            }
+            std::string v = s;
             Py_DECREF(utf8);
+            vec->append_from_cpp(&v);
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // Struct type
+        // ------------------------------------------------------------
+        case ValueType::Struct:
+        {
+            if (!PyObject_TypeCheck(value, &StructProxyType))
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected StructProxy");
+                return nullptr;
+            }
+            auto *sp = reinterpret_cast<StructProxyObject *>(value);
+            if (!sp->bound)
+            {
+                PyErr_SetString(PyExc_RuntimeError, "StructProxy has null BoundStruct");
+                return nullptr;
+            }
+            BoundStruct *bs = sp->bound;
+            void *struct_instance = bs->instance();
+            if (!struct_instance)
+            {
+                PyErr_SetString(PyExc_RuntimeError, "Failed to resolve struct instance");
+                return nullptr;
+            }
+            vec->append_from_cpp(struct_instance);
+            break;
+        }
+
+        // ------------------------------------------------------------
+        // Vector type
+        // ------------------------------------------------------------
+        case ValueType::Vector:
+        {
+            if (!PyObject_TypeCheck(value, &VectorProxyType))
+            {
+                PyErr_SetString(PyExc_TypeError, "Expected VectorProxy");
+                return nullptr;
+            }
+            auto *vp = reinterpret_cast<VectorProxyObject *>(value);
+            if (!vp->bound)
+            {
+                PyErr_SetString(PyExc_RuntimeError, "VectorProxy has null BoundVector");
+                return nullptr;
+            }
+            BoundVector *inner = vp->bound;
+            void *inner_raw = inner->raw_vector();
+            if (!inner_raw)
+            {
+                PyErr_SetString(PyExc_RuntimeError, "Failed to resolve vector pointer");
+                return nullptr;
+            }
+            vec->append_from_cpp(inner_raw); // FIXED: pass pointer directly, not address
+            break;
+        }
+
+        default:
+            PyErr_SetString(PyExc_TypeError, "Unsupported vector element type");
             return nullptr;
         }
-        std::string v = s;
-        Py_DECREF(utf8);
-        vec->append_from_cpp(&v);
-        break;
     }
-
-    // ------------------------------------------------------------
-    // Struct type
-    // ------------------------------------------------------------
-    case ValueType::Struct:
+    catch (const std::bad_alloc &)
     {
-        if (!PyObject_TypeCheck(value, &StructProxyType))
-        {
-            PyErr_SetString(PyExc_TypeError, "Expected StructProxy");
-            return nullptr;
-        }
-        auto *sp = reinterpret_cast<StructProxyObject *>(value);
-        if (!sp->bound)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "StructProxy has null BoundStruct");
-            return nullptr;
-        }
-        BoundStruct *bs = sp->bound;
-        void *struct_instance = bs->instance();
-        if (!struct_instance)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to resolve struct instance");
-            return nullptr;
-        }
-        vec->append_from_cpp(struct_instance);
-        break;
+        PyErr_SetString(PyExc_MemoryError, "Failed to append: out of memory");
+        return nullptr;
     }
-
-    // ------------------------------------------------------------
-    // Vector type
-    // ------------------------------------------------------------
-    case ValueType::Vector:
+    catch (const std::invalid_argument &e)
     {
-        if (!PyObject_TypeCheck(value, &VectorProxyType))
-        {
-            PyErr_SetString(PyExc_TypeError, "Expected VectorProxy");
-            return nullptr;
-        }
-        auto *vp = reinterpret_cast<VectorProxyObject *>(value);
-        if (!vp->bound)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "VectorProxy has null BoundVector");
-            return nullptr;
-        }
-        BoundVector *inner = vp->bound;
-        void *inner_raw = inner->raw_vector();
-        if (!inner_raw)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to resolve vector pointer");
-            return nullptr;
-        }
-        vec->append_from_cpp(inner_raw); // FIXED: pass pointer directly, not address
-        break;
+        PyErr_Format(PyExc_ValueError, "Failed to append: %s", e.what());
+        return nullptr;
     }
-
-    default:
-        PyErr_SetString(PyExc_TypeError, "Unsupported vector element type");
+    catch (const std::out_of_range &e)
+    {
+        PyErr_Format(PyExc_IndexError, "Failed to append: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::exception &e)
+    {
+        PyErr_Format(PyExc_RuntimeError, "Failed to append: %s", e.what());
+        return nullptr;
+    }
+    catch (...)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to append: unknown C++ exception");
         return nullptr;
     }
 
