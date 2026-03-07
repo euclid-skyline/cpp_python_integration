@@ -2296,6 +2296,270 @@ NEW FILES:
 
 ---
 
+## Semantic Rules Integration for Error Detection
+
+**Date Added:** March 7, 2026  
+**Cross-Reference:** See `SEMANTIC_RULES_CPYTHON_BINDING.md` - Integration with Error Handling Architecture section
+
+### Overview
+
+The error handling architecture integrates with **30 semantic rules** that define correct Python behavior when binding C++ objects. Each semantic rule violation represents a potential error that should be:
+1. **Detected** at runtime through validation checks
+2. **Prevented** through proper implementation patterns
+3. **Logged** via ErrorHandler for diagnostics
+4. **Converted** to appropriate Python exception types
+
+### Semantic Rule Categories as Error Sources
+
+The semantic rules are organized into categories that map to error detection points:
+
+#### Category 1: Type Safety (Rules 9, 11, Sc1-Sc7)
+**Error Detection:** Type mismatches, integer overflow, type coercion failures
+
+```cpp
+// Programming Rule: Always validate type and range before conversion
+try {
+    if (!PyLong_Check(value)) {
+        throw std::invalid_argument("Expected int, got " + type_name);
+    }
+    long val = PyLong_AsLong(value);
+    if (val > INT_MAX || val < INT_MIN) {
+        throw std::overflow_error("Value exceeds C++ int range");
+    }
+}
+catch (const std::overflow_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::ERROR,
+        ErrorCategory::TYPE_CONVERSION,
+        e.what(),
+        ErrorContext("type_validation", "int_overflow")
+    );
+    PyErr_Format(PyExc_OverflowError, "%s", e.what());
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::TYPE_CONVERSION` - Type coercion failures
+- `ErrorCategory::VALUE_ERROR` - Value out of valid range
+
+#### Category 2: Memory Safety (Rules 3, 13)
+**Error Detection:** Null pointer access, dangling references, lifetime violations
+
+```cpp
+// Programming Rule: Return Py_None for null, validate parent lifetime
+if (!cpp_object) {
+    ErrorHandler::instance().log_warning(
+        "Unexpected null object",
+        ErrorContext("object_access", "null_check")
+    );
+    Py_RETURN_NONE;  // Python semantic: None for null
+}
+
+// Validate parent still exists
+if (parent_proxy && parent_index >= parent_size()) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::LIFETIME_VIOLATION,
+        "Parent container modified, reference invalid",
+        ErrorContext("nested_access", "lifetime_check")
+    );
+    PyErr_SetString(PyExc_ValueError, "Dangling reference");
+    return nullptr;
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::NULL_REFERENCE` - Null pointer access
+- `ErrorCategory::LIFETIME_VIOLATION` - Dangling reference access
+
+#### Category 3: Container Semantics (Rules 4, 5, 6)
+**Error Detection:** Index bounds, iterator invalidation, modification during iteration
+
+```cpp
+// Programming Rule: Normalize negative indices, track modifications
+try {
+    // Python semantic: Support negative indexing
+    if (index < 0) {
+        index = size + index;
+    }
+    if (index < 0 || index >= size) {
+        throw std::out_of_range("Index out of range");
+    }
+    
+    // Check modification counter for iterator safety
+    if (iter->mod_count != vector->mod_count) {
+        throw std::runtime_error("Container modified during iteration");
+    }
+}
+catch (const std::out_of_range& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::INDEX_ERROR,
+        e.what(),
+        ErrorContext("vector_access", "bounds_check")
+    );
+    PyErr_Format(PyExc_IndexError, "%s", e.what());
+}
+catch (const std::runtime_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::ITERATOR_INVALIDATION,
+        e.what(),
+        ErrorContext("iterator", "modification_check")
+    );
+    PyErr_Format(PyExc_RuntimeError, "%s", e.what());
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::INDEX_ERROR` - Index out of bounds
+- `ErrorCategory::ITERATOR_INVALIDATION` - Modification during iteration
+
+#### Category 4: Encoding and String Safety (Rule 10)
+**Error Detection:** UTF-8 encoding failures, string conversion errors
+
+```cpp
+// Programming Rule: Validate UTF-8 encoding
+try {
+    if (!PyUnicode_Check(value)) {
+        throw std::invalid_argument("Expected string");
+    }
+    PyObject* utf8 = PyUnicode_AsUTF8String(value);
+    if (!utf8) {
+        throw std::runtime_error("UTF-8 encoding failed");
+    }
+    // Use string...
+}
+catch (const std::runtime_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::ERROR,
+        ErrorCategory::ENCODING_ERROR,
+        e.what(),
+        ErrorContext("string_conversion", "utf8_validation")
+    );
+    PyErr_Format(PyExc_UnicodeDecodeError, "%s", e.what());
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::ENCODING_ERROR` - String encoding/decoding failures
+
+### Semantic Validation Phases
+
+The error handling architecture applies semantic validations at specific phases:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Python → C++ Call Flow                       │
+└─────────────────────────────────────────────────────────────────┘
+
+   Python Script
+   calls proxy.method(args)
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Phase 1: Pre-Validation           │  ← Rules 3, 9, 10, 11
+   │  - Type checks (Rule 11)           │    Type safety
+   │  - Null checks (Rule 3)            │
+   │  - Overflow checks (Rule 9)        │
+   │  - UTF-8 validation (Rule 10)      │
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Phase 2: Index Normalization      │  ← Rules 4, 5
+   │  - Negative index conversion       │    Container access
+   │  - Bounds checking                 │
+   │  - Slice handling                  │
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Phase 3: Lifetime Validation      │  ← Rule 13
+   │  - Parent proxy check              │    Memory safety
+   │  - Modification counter check      │
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Phase 4: C++ Operation            │  ← Issue 50
+   │  - Try-catch boundary protection   │    Exception safety
+   │  - Reflection layer call           │
+   │  - Modification tracking (Rule 6)  │
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Phase 5: Exception Translation    │  ← All Rules
+   │  - C++ exception → Python error    │    Error conversion
+   │  - ErrorHandler logging            │
+   │  - Context capture                 │
+   └────────────────────────────────────┘
+        │
+        ↓
+   Return to Python
+   (with result or PyErr set)
+```
+
+### Extended Error Categories for Semantic Rules
+
+Add these categories to `error_handler.hpp`:
+
+```cpp
+enum class ErrorCategory {
+    // Existing categories
+    MEMORY_ERROR,
+    TYPE_ERROR,
+    VALUE_ERROR,
+    RUNTIME_ERROR,
+    
+    // Semantic-specific categories (NEW)
+    SEMANTIC_VIOLATION,      // General Python semantic rule violation
+    ITERATOR_INVALIDATION,   // Rule 6: Modification during iteration
+    TYPE_CONVERSION,         // Rules 9, 11: Type coercion/overflow
+    ENCODING_ERROR,          // Rule 10: String encoding issues
+    LIFETIME_VIOLATION,      // Rule 13: Dangling reference access
+    INDEX_ERROR,             // Rule 4: Index out of bounds
+    NULL_REFERENCE,          // Rule 3: Unexpected null pointer
+    BOUNDS_ERROR,            // Rule 4, 5: Out of range access
+};
+```
+
+### Implementation Priority by Phase
+
+| Phase | Semantic Rules | Implementation Status | Error Detection |
+|-------|----------------|----------------------|-----------------|
+| **Phase 1** | Rules 3, 9, 10, 11 | ⏳ In Progress | Type validation, null checks, overflow |
+| **Phase 2** | Rules 4, 5, 6 | ✅ Partially (Issue 50) | Index normalization, iterator safety |
+| **Phase 3** | Rule 13 | ⏳ Planned | Lifetime validation, parent checks |
+| **Phase 4** | Rules 2, 8, 12, 15 | ⏳ Future | Advanced semantics |
+
+### Example: Complete Semantic Validation
+
+See `SEMANTIC_RULES_CPYTHON_BINDING.md` section "Integration Example: Complete Function with Semantic Checks" for a fully-implemented example showing:
+- All 4 validation phases
+- ErrorHandler integration
+- Exception translation
+- Context tracking
+- Modification counting
+
+### Benefits of Semantic Rules Integration
+
+1. **Comprehensive Error Detection** - Catches violations before they cause crashes
+2. **Python-Correct Behavior** - Proxy objects behave like native Python objects
+3. **Better Error Messages** - Context-rich messages help users debug
+4. **Centralized Logging** - All semantic violations logged for analysis
+5. **Maintainability** - Clear rules for implementing new proxy functions
+
+### Cross-Reference Documentation
+
+For detailed semantic rules and implementation patterns:
+- See: `SEMANTIC_RULES_CPYTHON_BINDING.md` - Complete 30-rule reference
+- See: `SEMANTIC_RULES_CPYTHON_BINDING.md` § Integration with Error Handling Architecture
+- See: `doc/fixes/ADDITIONAL_ISSUES_MARCH_2026.md` - Issue 50-57 tracking
+
+---
+
 ## Summary
 
 This architecture provides:

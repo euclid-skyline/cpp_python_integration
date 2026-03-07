@@ -2293,6 +2293,531 @@ When a Python user writes code, they have Python expectations. Your binding is s
 - PEP 20 - The Zen of Python: "explicit is better than implicit"
 - Issue 55: Iterator Invalidation Detection (this project)
 - Issue 53: Integer Overflow Checks (this project)
+- ERROR_HANDLING_ARCHITECTURE.md - Error handling integration (this project)
+
+---
+
+## Integration with Error Handling Architecture
+
+**Date Added:** March 7, 2026  
+**Purpose:** Map semantic rule violations to error handling mechanisms
+
+### Overview
+
+Semantic rule violations can be detected and handled through the error handling architecture. This section defines how to translate Python semantic expectations into C++ runtime checks that trigger appropriate error responses.
+
+### Semantic Rule → Error Type Mapping
+
+| Rule Category | Semantic Violation | Error Detection | C++ Exception | Python Exception | Error Handler Action |
+|---------------|-------------------|-----------------|---------------|------------------|---------------------|
+| **Rule 3** | Null pointer returned | Check for `nullptr` before creating proxy | N/A | Return `Py_None` instead | Log warning if unexpected |
+| **Rule 4** | Negative index out of bounds | Check `index < -size` | `std::out_of_range` | `IndexError` | Log bounds violation |
+| **Rule 6** | Modification during iteration | Compare modification counter | `std::runtime_error` | `RuntimeError` | Log iterator invalidation |
+| **Rule 9** | Integer overflow | Check value > INT_MAX | `std::overflow_error` | `OverflowError` | Log overflow with values |
+| **Rule 10** | Invalid UTF-8 encoding | PyUnicode validation fails | N/A | `UnicodeDecodeError` | Log encoding issue |
+| **Rule 11** | Type coercion failure | Type check before cast | `std::bad_cast` | `TypeError` | Log type mismatch |
+| **Rule 13** | Dangling reference access | Check parent proxy validity | `std::runtime_error` | `ValueError` | Log lifetime violation |
+
+### C++ Programming Rules for Semantic Enforcement
+
+#### Programming Rule 1: Always Validate Python Index Before C++ Access
+**Semantic Rule:** Rule 4 (Negative Indexing)
+
+```cpp
+// ❌ WRONG: Direct translation without validation
+PyObject* VectorProxy_getitem(PyObject* self, Py_ssize_t index) {
+    auto* proxy = reinterpret_cast<VectorProxyObject*>(self);
+    void* elem = proxy->bound->element_ptr(index);  // Crash if index < 0!
+    return create_python_object(elem);
+}
+
+// ✅ CORRECT: Validate and normalize index according to Python semantics
+PyObject* VectorProxy_getitem(PyObject* self, Py_ssize_t index) {
+    auto* proxy = reinterpret_cast<VectorProxyObject*>(self);
+    
+    try {
+        std::size_t size = proxy->bound->size();
+        
+        // Python semantic: Convert negative index
+        if (index < 0) {
+            index = static_cast<Py_ssize_t>(size) + index;
+        }
+        
+        // Bounds check with Python-style error
+        if (index < 0 || index >= static_cast<Py_ssize_t>(size)) {
+            throw std::out_of_range("Vector index out of range");
+        }
+        
+        void* elem = proxy->bound->element_ptr(static_cast<std::size_t>(index));
+        return create_python_object(elem);
+    }
+    catch (const std::out_of_range& e) {
+        PyErr_Format(PyExc_IndexError, "Vector index out of range: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::exception& e) {
+        PyErr_Format(PyExc_RuntimeError, "Failed to get element: %s", e.what());
+        return nullptr;
+    }
+}
+```
+
+**Error Handler Integration:**
+```cpp
+// With full error architecture (Phase 2):
+PyObject* VectorProxy_getitem(PyObject* self, Py_ssize_t index) {
+    return ExceptionTranslator<PyObject*>::Call([&]() {
+        // Normalized index access with semantic validation
+        return get_item_with_python_semantics(self, index);
+    }, "VectorProxy_getitem", ErrorContext("vector_access", "getitem"));
+}
+```
+
+#### Programming Rule 2: Detect Iterator Invalidation Through Modification Tracking
+**Semantic Rule:** Rule 6 (Iterator Modification Detection)
+
+```cpp
+// Data structure to track modifications
+struct BoundVector : public BoundValue {
+    std::size_t modification_count = 0;  // Increment on any modification
+    
+    void append_from_cpp(void* value_ptr) {
+        if (!m_info->append_fn)
+            throw std::invalid_argument("append_fn is null");
+        m_info->append_fn(raw_vector(), value_ptr);
+        ++modification_count;  // Track modification
+    }
+};
+
+// Iterator checks modification count
+struct VectorIteratorObject {
+    PyObject_HEAD
+    BoundVector* vector;
+    std::size_t modification_count_at_creation;
+    std::size_t current_index;
+};
+
+// ✅ CORRECT: Check for modifications during iteration
+PyObject* VectorIterator_next(PyObject* self) {
+    auto* iter = reinterpret_cast<VectorIteratorObject*>(self);
+    
+    try {
+        // Python semantic: Iterator invalidation check
+        if (iter->vector->modification_count != iter->modification_count_at_creation) {
+            throw std::runtime_error("Vector modified during iteration");
+        }
+        
+        if (iter->current_index >= iter->vector->size()) {
+            PyErr_SetNone(PyExc_StopIteration);
+            return nullptr;
+        }
+        
+        PyObject* item = get_element_at(iter->vector, iter->current_index++);
+        return item;
+    }
+    catch (const std::runtime_error& e) {
+        PyErr_Format(PyExc_RuntimeError, "%s", e.what());
+        return nullptr;
+    }
+}
+```
+
+**Error Handler Integration:**
+```cpp
+// Log semantic violations
+ErrorHandler::instance().log_error(
+    ErrorSeverity::WARNING,
+    ErrorCategory::SEMANTIC_VIOLATION,
+    "Vector modified during iteration",
+    ErrorContext("vector_iteration", "iterator_next")
+);
+```
+
+#### Programming Rule 3: Return Py_None for Null C++ Pointers
+**Semantic Rule:** Rule 3 (None vs nullptr)
+
+```cpp
+// ❌ WRONG: Returning nullptr crashes Python interpreter
+PyObject* find_player(int id) {
+    Player* p = cpp_find_player(id);
+    if (!p) {
+        return nullptr;  // ❌ CRASH!
+    }
+    return create_player_proxy(p);
+}
+
+// ✅ CORRECT: Return Py_None for null values
+PyObject* find_player(int id) {
+    try {
+        Player* p = cpp_find_player(id);
+        if (!p) {
+            Py_RETURN_NONE;  // ✅ Python semantic: None for "not found"
+        }
+        return create_player_proxy(p);
+    }
+    catch (const std::exception& e) {
+        PyErr_Format(PyExc_RuntimeError, "Failed to find player: %s", e.what());
+        return nullptr;  // Only return nullptr when setting PyErr
+    }
+}
+```
+
+**Error Handler Integration:**
+```cpp
+// Log unexpected null values
+if (!p && should_exist) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::DATA_INTEGRITY,
+        "Unexpected null player pointer",
+        ErrorContext("player_lookup", std::to_string(id))
+    );
+}
+```
+
+#### Programming Rule 4: Check Integer Overflow Before Assignment
+**Semantic Rule:** Rule 9 (Arbitrary Precision Integers)
+
+```cpp
+// ❌ WRONG: Silent truncation/overflow
+int convert_python_int(PyObject* value) {
+    return PyLong_AsLong(value);  // Silently overflows!
+}
+
+// ✅ CORRECT: Check for overflow with Python semantics
+int convert_python_int(PyObject* value) {
+    try {
+        long long_value = PyLong_AsLong(value);
+        
+        // Check for overflow error from PyLong_AsLong
+        if (long_value == -1 && PyErr_Occurred()) {
+            throw std::overflow_error("Python int too large for C long");
+        }
+        
+        // Python semantic: Check C++ type bounds
+        if (long_value > INT_MAX || long_value < INT_MIN) {
+            throw std::overflow_error(
+                "Value " + std::to_string(long_value) + 
+                " exceeds C++ int range [" + std::to_string(INT_MIN) + 
+                ", " + std::to_string(INT_MAX) + "]"
+            );
+        }
+        
+        return static_cast<int>(long_value);
+    }
+    catch (const std::overflow_error& e) {
+        PyErr_Format(PyExc_OverflowError, "%s", e.what());
+        return 0;  // Return default, error already set
+    }
+}
+```
+
+**Error Handler Integration:**
+```cpp
+// Log overflow incidents for analysis
+ErrorHandler::instance().log_error(
+    ErrorSeverity::ERROR,
+    ErrorCategory::TYPE_CONVERSION,
+    std::string("Integer overflow: ") + e.what(),
+    ErrorContext("int_conversion", "python_to_cpp")
+);
+```
+
+#### Programming Rule 5: Validate UTF-8 Encoding for String Conversions
+**Semantic Rule:** Rule 10 (String Encoding)
+
+```cpp
+// ✅ CORRECT: Validate UTF-8 and handle encoding errors
+std::string convert_python_string(PyObject* value) {
+    try {
+        if (!PyUnicode_Check(value)) {
+            throw std::invalid_argument("Expected string");
+        }
+        
+        // Convert to UTF-8 with error checking
+        PyObject* utf8 = PyUnicode_AsUTF8String(value);
+        if (!utf8) {
+            throw std::runtime_error("Failed to encode string as UTF-8");
+        }
+        
+        const char* str = PyBytes_AsString(utf8);
+        if (!str) {
+            Py_DECREF(utf8);
+            throw std::runtime_error("Failed to extract UTF-8 bytes");
+        }
+        
+        std::string result(str);
+        Py_DECREF(utf8);
+        return result;
+    }
+    catch (const std::exception& e) {
+        PyErr_Format(PyExc_UnicodeDecodeError, 
+                     "String conversion failed: %s", e.what());
+        return "";
+    }
+}
+```
+
+#### Programming Rule 6: Check Type Before Coercion
+**Semantic Rule:** Rule 11 (Implicit Type Coercion)
+
+```cpp
+// ❌ WRONG: Assume type and crash
+void set_health(PyObject* value) {
+    int health = PyLong_AsLong(value);  // Crashes if not int!
+    cpp_player.health = health;
+}
+
+// ✅ CORRECT: Validate type with Python semantics
+void set_health(PyObject* value) {
+    try {
+        // Python semantic: Check type before conversion
+        if (!PyLong_Check(value)) {
+            throw std::invalid_argument(
+                "Expected int for health, got " + 
+                std::string(Py_TYPE(value)->tp_name)
+            );
+        }
+        
+        int health = PyLong_AsLong(value);
+        if (health == -1 && PyErr_Occurred()) {
+            throw std::overflow_error("Health value overflow");
+        }
+        
+        // Business logic validation
+        if (health < 0) {
+            throw std::invalid_argument("Health cannot be negative");
+        }
+        
+        cpp_player.health = health;
+    }
+    catch (const std::invalid_argument& e) {
+        PyErr_Format(PyExc_TypeError, "%s", e.what());
+    }
+    catch (const std::overflow_error& e) {
+        PyErr_Format(PyExc_OverflowError, "%s", e.what());
+    }
+}
+```
+
+#### Programming Rule 7: Validate Parent Proxy Lifetime
+**Semantic Rule:** Rule 13 (Container Lifetime and Views)
+
+```cpp
+// Track parent proxy validity
+struct BoundStruct : public BoundValue {
+    BoundVector* m_parent_vector = nullptr;
+    std::size_t m_element_index = 0;
+    
+    void* instance() const {
+        try {
+            // Python semantic: Check parent still valid
+            if (m_parent_vector) {
+                if (m_element_index >= m_parent_vector->size()) {
+                    throw std::out_of_range(
+                        "Parent vector modified, element no longer exists"
+                    );
+                }
+                return m_parent_vector->element_ptr(m_element_index);
+            }
+            return m_struct_ptr;
+        }
+        catch (const std::out_of_range& e) {
+            // Convert to Python error
+            PyErr_Format(PyExc_ValueError, 
+                         "Dangling reference: %s", e.what());
+            return nullptr;
+        }
+    }
+};
+```
+
+### Semantic Validation Checklist for Error Handling
+
+When implementing error handling for any Python C API function:
+
+#### Pre-Condition Checks (Before C++ Operation)
+- [ ] **Null Check:** Is pointer valid? Return `Py_None` if appropriate
+- [ ] **Type Check:** Does Python value match expected type? Set `TypeError` if not
+- [ ] **Range Check:** Is index/value within valid range? Set `IndexError`/`ValueError`
+- [ ] **Bounds Check:** For vectors, validate `0 <= index < size` (after negative conversion)
+- [ ] **Overflow Check:** For integers, validate within C++ type bounds
+- [ ] **Encoding Check:** For strings, validate UTF-8 encoding
+- [ ] **Lifetime Check:** For nested objects, validate parent still exists
+
+#### Operation Execution (C++ Layer)
+- [ ] **Wrap in try-catch:** Catch all C++ exceptions at boundary
+- [ ] **Modification Tracking:** Increment counter for container modifications
+- [ ] **Exception Translation:** Convert C++ exceptions to appropriate Python errors
+- [ ] **Resource Cleanup:** Use RAII or explicit cleanup in catch blocks
+
+#### Post-Condition Actions (After C++ Operation)
+- [ ] **Error Logging:** Log semantic violations to ErrorHandler
+- [ ] **Metric Recording:** Update error counters for analysis
+- [ ] **Context Capture:** Save error context (function, parameters)
+- [ ] **Python Error Set:** Ensure PyErr is set before returning nullptr
+- [ ] **Reference Counting:** Ensure Py_INCREF/DECREF balanced
+
+### Error Categories for Semantic Violations
+
+```cpp
+enum class ErrorCategory {
+    // Existing categories
+    MEMORY_ERROR,
+    TYPE_ERROR,
+    VALUE_ERROR,
+    
+    // Semantic-specific categories (add to error_handler.hpp)
+    SEMANTIC_VIOLATION,      // Python semantic rule violated
+    ITERATOR_INVALIDATION,   // Rule 6: Modification during iteration
+    TYPE_CONVERSION,         // Rule 9, 11: Type coercion/overflow
+    ENCODING_ERROR,          // Rule 10: String encoding issues
+    LIFETIME_VIOLATION,      // Rule 13: Dangling reference access
+    INDEX_ERROR,             // Rule 4: Index out of bounds
+    NULL_REFERENCE,          // Rule 3: Unexpected null
+};
+```
+
+### Integration Example: Complete Function with Semantic Checks
+
+```cpp
+/**
+ * Example: VectorProxy_append with full semantic validation and error handling
+ * Demonstrates: Rules 3, 6, 9, 11, Issue 50 exception safety
+ */
+PyObject* VectorProxy_append(PyObject* self, PyObject* value) {
+    auto* proxy = reinterpret_cast<VectorProxyObject*>(self);
+    
+    // Pre-condition: Validate proxy (Rule 3)
+    if (!proxy || !proxy->bound) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::CRITICAL,
+            ErrorCategory::NULL_REFERENCE,
+            "Internal error: VectorProxy has null BoundVector",
+            ErrorContext("VectorProxy_append", "proxy_validation")
+        );
+        PyErr_SetString(PyExc_RuntimeError, "Internal error: null proxy");
+        return nullptr;
+    }
+    
+    BoundVector* vec = proxy->bound;
+    const VectorInfo* info = vec->info();
+    
+    if (!info) {
+        PyErr_SetString(PyExc_RuntimeError, "VectorInfo is null");
+        return nullptr;
+    }
+    
+    try {
+        // Track modifications for Rule 6 (iterator invalidation)
+        std::size_t mod_count_before = vec->modification_count;
+        
+        switch (info->element_type) {
+        case ValueType::Int: {
+            // Type check (Rule 11)
+            if (!PyLong_Check(value)) {
+                throw std::invalid_argument("Expected int");
+            }
+            
+            // Overflow check (Rule 9)
+            long long_val = PyLong_AsLong(value);
+            if (long_val == -1 && PyErr_Occurred()) {
+                throw std::overflow_error("Integer overflow");
+            }
+            if (long_val > INT_MAX || long_val < INT_MIN) {
+                throw std::overflow_error(
+                    "Value exceeds C++ int range"
+                );
+            }
+            
+            int v = static_cast<int>(long_val);
+            vec->append_from_cpp(&v);  // Can throw (Issue 50)
+            break;
+        }
+        // ... other types ...
+        
+        default:
+            throw std::invalid_argument("Unsupported vector element type");
+        }
+        
+        // Post-condition: Log successful operation
+        ErrorHandler::instance().log_info(
+            "Vector append successful",
+            ErrorContext("VectorProxy_append", "element_type=" + 
+                        std::to_string(static_cast<int>(info->element_type)))
+        );
+        
+        Py_RETURN_NONE;
+    }
+    // Exception translation (Issue 50 fix)
+    catch (const std::bad_alloc&) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::CRITICAL,
+            ErrorCategory::MEMORY_ERROR,
+            "Out of memory during vector append",
+            ErrorContext("VectorProxy_append", "allocation_failure")
+        );
+        PyErr_SetString(PyExc_MemoryError, "Failed to append: out of memory");
+        return nullptr;
+    }
+    catch (const std::overflow_error& e) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::ERROR,
+            ErrorCategory::TYPE_CONVERSION,
+            std::string("Integer overflow: ") + e.what(),
+            ErrorContext("VectorProxy_append", "overflow_check")
+        );
+        PyErr_Format(PyExc_OverflowError, "Failed to append: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::invalid_argument& e) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::WARNING,
+            ErrorCategory::SEMANTIC_VIOLATION,
+            std::string("Type validation failed: ") + e.what(),
+            ErrorContext("VectorProxy_append", "type_check")
+        );
+        PyErr_Format(PyExc_ValueError, "Failed to append: %s", e.what());
+        return nullptr;
+    }
+    catch (const std::exception& e) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::ERROR,
+            ErrorCategory::UNKNOWN,
+            std::string("Unexpected error: ") + e.what(),
+            ErrorContext("VectorProxy_append", "unknown")
+        );
+        PyErr_Format(PyExc_RuntimeError, "Failed to append: %s", e.what());
+        return nullptr;
+    }
+    catch (...) {
+        ErrorHandler::instance().log_error(
+            ErrorSeverity::CRITICAL,
+            ErrorCategory::UNKNOWN,
+            "Unknown C++ exception",
+            ErrorContext("VectorProxy_append", "unknown_exception")
+        );
+        PyErr_SetString(PyExc_RuntimeError, "Failed to append: unknown C++ exception");
+        return nullptr;
+    }
+}
+```
+
+### Summary: Semantic Rules as Error Detection Points
+
+| Implementation Phase | Semantic Rules Applied | Error Detection Method |
+|---------------------|------------------------|------------------------|
+| **Phase 1** (Foundation) | Rules 3, 9, 11 | Null checks, type validation, overflow detection |
+| **Phase 2** (Boundary Protection) | Rules 4, 10 | Index normalization, UTF-8 validation |
+| **Phase 3** (State Management) | Rules 6, 13 | Modification tracking, lifetime validation |
+| **Phase 4** (Advanced Features) | Rules 2, 8, 12, 15 | Mutability control, identity tracking, weakref support |
+
+By mapping semantic rules to error handling, you create a **type-safe, semantically correct Python binding** that:
+- ✅ Prevents crashes from semantic violations
+- ✅ Provides meaningful error messages
+- ✅ Follows Python's design contract
+- ✅ Enables comprehensive error logging and analysis
+- ✅ Maintains C++ performance with minimal overhead
 
 ---
 
