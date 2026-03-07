@@ -282,3 +282,91 @@ The operations implemented in `controller.py` are natively correct per the C++ e
 If the application engine and Python integration strictly run within a single thread—meaning there are absolutely no simultaneous background threads executing networking logic, separate Python scripts, C++ background asset loading, or concurrent asynchronous tasks—the following issue becomes obsolete and can be safely ignored right now:
 
 - **Issue 6 (GIL Management in Main Game Loop)**: This issue is only strictly applicable and dangerous when multi-threading is active since the C++ thread fails to release the Global Interpreter Lock, subsequently starving execution for auxiliary Python threads. In a purely single-threaded runtime, keeping the GIL locked throughout the `sleep_for` cycles has no negative blocking consequences since no other thread competes for the context execution state.
+
+---
+
+## Issue 8: Swallowed Python Exceptions Leading to SystemError
+**Files Affected:** `python_bind.hpp` (e.g. `PyBoundInt::from_python`), `python_proxy.cpp` (`StructProxy_setattro`, `VectorProxy_setitem`, `VectorProxy_append`)
+**Severity:** HIGH - Fatal Interpreter Crash (`SystemError`)
+
+**Description:**
+When converting Python values to C++ (e.g., assigning to a C++ proxy variable), the code checks the Python type (e.g., `PyLong_Check`) and then extracts the value (e.g., `PyLong_AsLong`). However, it completely ignores the possibility that value extraction might fail (e.g., if the Python integer is too large to fit in a C `long`, `PyLong_AsLong` returns `-1` and sets an `OverflowError`). The C++ code proceeds to return `true` or `0` (success), instructing the interpreter that the operation succeeded, but leaving an active exception set in the background context. CPython strictly forbids returning success with an active exception and will instantly crash with a `SystemError: returned a result with an error set`. Furthermore, in `python_bind.hpp`, `PyFloat_AsDouble` also acts identically if an error occurs. 
+
+**Recommended Fix:**
+Check `PyErr_Occurred()` after `PyLong_AsLong` or `PyFloat_AsDouble` calls. If an error is set, immediately return failure (`false` or `-1`) so CPython can propagate the already-set exception cleanly.
+
+**Source Code Changes:**
+1. **`python_proxy.cpp` & `python_bind.hpp`** (Apply to all numeric conversions):
+   ```cpp
+   long v = PyLong_AsLong(value);
+   if (v == -1 && PyErr_Occurred()) {
+       return -1; // Or return false in python_bind.hpp
+   }
+   *static_cast<int *>(fieldPtr) = static_cast<int>(v);
+   ```
+
+---
+
+## Issue 9: Silent Integer Truncation on C++ Narrowing Casts
+**Files Affected:** `python_proxy.cpp` (`StructProxy_setattro`, `VectorProxy_setitem`, `VectorProxy_append`), `python_bind.hpp`
+**Severity:** MEDIUM - Data Corruption / Loss of Precision
+
+**Description:**
+Both `python_bind.hpp` and `python_proxy.cpp` fetch integers using `PyLong_AsLong(value)`, which returns a `long` integer (e.g., 64-bit on many platforms). This value is immediately down-casted via `static_cast<int>` and assigned to C++ `int` fields (which are usually 32-bit). If a Python script passes a number that fits inside a `long` but exceeds the maximum size of a 32-bit `int` (e.g., `3000000000`), no Python overflow exception will be generated, but the C++ value will be silently truncated and heavily corrupted (producing negative or heavily warped numbers).
+
+**Recommended Fix:**
+Implement a bounds check before casting the retrieved `long` variable down to `int`.
+
+**Source Code Changes:**
+1. **`python_proxy.cpp` & `python_bind.hpp`** (After the fix from Issue 8):
+   ```cpp
+   long v = PyLong_AsLong(value);
+   if (v == -1 && PyErr_Occurred()) return -1;
+   
+   if (v < std::numeric_limits<int>::min() || v > std::numeric_limits<int>::max()) {
+       PyErr_SetString(PyExc_OverflowError, "Python int too large to convert to C++ int");
+       return -1; // Or false in python_bind.hpp
+   }
+   *static_cast<int *>(fieldPtr) = static_cast<int>(v);
+   ```
+
+---
+
+## Issue 10: Fatal Fallback Crash on Cleared Python Exceptions
+**Files Affected:** `main.cpp`
+**Severity:** HIGH - Application Crash on `KeyboardInterrupt` (Ctrl+C)
+
+**Description:**
+The main execution loop uses `PyErr_ExceptionMatches(PyExc_KeyboardInterrupt)` to detect if the user forcefully stops the script (Ctrl+C). If it matches, the exception is immediately cleared from the interpreter thread using `PyErr_Clear()`. However, the execution flow then falls straight through without `break`ing or `continue`ing and executes `PyErr_Print()`. Calling `PyErr_Print()` when no exception is actively set causes undefined behavior within CPython (often printing missing excepthook warnings, lost stderr bindings, or outright crashing).
+
+**Recommended Fix:**
+Use an `else if` structure or `return`/`continue` isolation so `PyErr_Print()` only runs when an active exception truthfully exists.
+
+**Source Code Changes:**
+1. **`main.cpp`** (Inside the `else` block capturing Python call failures):
+   ```cpp
+   if (PyErr_ExceptionMatches(PyExc_KeyboardInterrupt))
+   {
+       PyErr_Clear();
+       std::cout << "KeyboardInterrupt received. Stopping...\n";
+       // break; or continue; depending on the loop layout
+   }
+   else
+   {
+       // Only print if it is a genuine Python crash/exception
+       PyErr_Print();
+       std::cout << "There is exceptions\n";
+   }
+   ```
+
+---
+
+## Issue 11: Stack Pointer Referencing Vulnerability via `PyInterface::bind` 
+**Files Affected:** `main.cpp`, `value_interface.hpp`
+**Severity:** MEDIUM - Dangling References / Potential Segfaults in Future usage
+
+**Description:**
+The function `PyInterface::bind(name, variable)` directly saves the raw memory address pointer (`&variable`) into the global `PyInterface::g_values()` registry without claiming logical ownership or moving the memory. In `main.cpp`, variables like `int temp`, `Player player`, and `std::vector scores` are allocated directly on the stack inside the `main()` scope. While safe implicitly here because `main()` outlives the Python execution, if any engineer uses `PyInterface::bind` inside a smaller subsidiary function scope, those stack memory allocations will be destroyed the second the function returns. The global dictionary registry will then blindly provide detached dangling pointers to Python, enabling Use-After-Free memory exploitation or instant application segfaults.
+
+**Recommended Fix:**
+This fundamentally requires an overarching architectural constraint. Either memory bound to Python must strictly be allocated on the heap (dynamically natively managed by smart pointers) or `PyInterface::bind` must be explicitly restricted and documented to only accept global static/heap objects, throwing `std::runtime_error` or enforcing lifetime guarantees.
