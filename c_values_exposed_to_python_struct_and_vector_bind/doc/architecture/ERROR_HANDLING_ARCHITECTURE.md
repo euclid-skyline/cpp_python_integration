@@ -15,11 +15,12 @@
 3. [Architecture Detail Intent](#architecture-detail-intent)
 4. [Architectural Overview](#architectural-overview)
 5. [Component Architecture](#component-architecture)
-6. [Bidirectional Error Flow](#bidirectional-error-flow)
-7. [State Management During Errors](#state-management-during-errors)
-8. [Recovery Strategies](#recovery-strategies)
-9. [Design Patterns](#design-patterns)
-10. [Implementation Roadmap](#implementation-roadmap)
+6. [Semantic Rules Integration for Error Detection](#semantic-rules-integration-for-error-detection)
+7. [Bidirectional Error Flow](#bidirectional-error-flow)
+8. [State Management During Errors](#state-management-during-errors)
+9. [Recovery Strategies](#recovery-strategies)
+10. [Design Patterns](#design-patterns)
+11. [Implementation Roadmap](#implementation-roadmap)
 
 ---
 
@@ -158,7 +159,7 @@ graph TB
         PBL --> CAPI
     end
     
-    CAPI["Python C API Boundary<br/>try-catch barriers<br/>PyErr_SetString/PyErr_Format<br/>PyErr_Occurred/PyErr_Clear<br/>Reference count safety"]
+    CAPI["Python C API Boundary<br/>try-catch barriers<br/>PyErr_SetString/PyErr_Format<br/>PyErr_Occurred/PyErr_Clear<br/>Reference count safety<br/><br/>🔍 SEMANTIC VALIDATION LAYER<br/>• Type safety checks (Rules 9,11)<br/>• Index normalization (Rules 4,5)<br/>• Lifetime validation (Rule 13)<br/>• Encoding checks (Rule 10)"]
     
     subgraph PythonInterp["Python Interpreter"]
         PS["Python Script controller.py<br/>def update_values():<br/>    try:<br/>        cpp.player.health = 100<br/>        cpp.enemies.append_new()<br/>    except ValueError as e:<br/>        log_error e"]
@@ -175,11 +176,17 @@ The diagram illustrates three distinct execution domains where error handling mu
 
 1. **C++ Application Domain** (left): The main event loop runs C++ code that initiates operations. The Error Handler Layer monitors for exceptions and provides the first line of defense. The Python Bridge Layer acts as the transition point, preparing for calls across the language boundary.
 
-2. **Python C API Boundary** (center): This is the critical isolation layer. The Python C API (CAPI) enforces strict contract semantics—any exception that occurs must be captured and converted before crossing. This boundary prevents unhandled C++ exceptions from crashing the Python interpreter and vice versa. No exception is allowed to leak across this barrier.
+2. **Python C API Boundary with Semantic Validation Layer** (center): This is the critical isolation layer. The Python C API (CAPI) enforces strict contract semantics—any exception that occurs must be captured and converted before crossing. **The Semantic Validation Layer** is embedded here, performing runtime checks for:
+   - **Type Safety** (Rules 9, 11): Validate type conversions and detect integer overflow before C++ operations
+   - **Index Normalization** (Rules 4, 5): Support negative indexing, bounds checking, slice handling
+   - **Lifetime Validation** (Rule 13): Detect dangling references, validate parent container state
+   - **Encoding Checks** (Rule 10): Validate UTF-8 encoding for string conversions
+   
+   This layer prevents both unhandled C++ exceptions from crashing Python AND semantically invalid operations from corrupting C++ state. No exception is allowed to leak across this barrier.
 
 3. **Python Interpreter Domain** (right): Once the boundary is safely crossed, Python code executes in its own interpreter context with its own exception model. Python errors are caught using standard try/except mechanisms and communicated back to C++ via the C API's error indicator mechanism.
 
-**Key Design Point**: The unidirectional arrows indicate that exceptions must be explicitly caught, translated, and converted at each boundary crossing. This prevents language-specific exception semantics from propagating uncontrolled across language domains and ensures both the C++ application and Python interpreter remain in stable, recoverable states.
+**Key Design Point**: The unidirectional arrows indicate that exceptions must be explicitly caught, translated, and converted at each boundary crossing. The semantic validation layer adds a critical pre-validation step that catches rule violations before unsafe operations occur. This prevents language-specific exception semantics from propagating uncontrolled across language domains and ensures both the C++ application and Python interpreter remain in stable, recoverable states.
 
 ### Error Flow Components
 
@@ -192,7 +199,20 @@ graph TD
         PyEx --> PyTry --> PyErr
     end
 
-    XL["Exception Translation Layer<br/>• Python → C++ mapping<br/>• C++ → Python mapping<br/>• Semantic normalization"]
+    subgraph SemVal["🔍 Semantic Validation Layer"]
+        SemType["Type Safety Validator<br/>Rules 9, 11, Sc1-Sc7"]
+        SemIdx["Index Normalizer<br/>Rules 4, 5"]
+        SemLife["Lifetime Validator<br/>Rule 13"]
+        SemEnc["Encoding Validator<br/>Rule 10"]
+        SemIter["Iterator Safety<br/>Rule 6"]
+        
+        SemType --> SemIdx
+        SemIdx --> SemLife
+        SemLife --> SemEnc
+        SemEnc --> SemIter
+    end
+
+    XL["Exception Translation Layer<br/>• Python → C++ mapping<br/>• C++ → Python mapping<br/>• Semantic context enrichment<br/>• Error category classification"]
 
     subgraph CppDomain["C++ Exception Domain"]
         CppEx["C++ Exception"]
@@ -200,17 +220,18 @@ graph TD
         CppEx --> CppTry
     end
 
-    PyErr -->|Python error to C++ context| XL
+    PyErr -->|Python error to C++ context| SemVal
+    SemVal -->|Semantic violations detected| XL
     XL -->|Raise/propagate C++ exception| CppEx
     CppTry -->|Caught C++ exception details| XL
     XL -->|Set Python error indicator| PyErr
 
     subgraph CEH["Centralized Error Handler"]
-        EHIngest["Error Ingestion<br/>Normalize incoming errors"]
-        EHClassify["Severity & Source Classifier<br/>Info/Warning/Error/Critical"]
-        EHLogger["Structured Logger<br/>Context, timestamp, traceback"]
-        EHState["State Impact Analyzer<br/>Running vs degraded"]
-        EHNotify["Monitoring Notifier<br/>Alerts, metrics, diagnostics"]
+        EHIngest["Error Ingestion<br/>Normalize incoming errors<br/>+ semantic categories"]
+        EHClassify["Severity & Source Classifier<br/>Info/Warning/Error/Critical<br/>+ semantic violation types"]
+        EHLogger["Structured Logger<br/>Context, timestamp, traceback<br/>+ semantic rule metadata"]
+        EHState["State Impact Analyzer<br/>Running vs degraded<br/>+ semantic failure patterns"]
+        EHNotify["Monitoring Notifier<br/>Alerts, metrics, diagnostics<br/>+ semantic rule violations"]
 
         EHIngest --> EHClassify
         EHClassify --> EHLogger
@@ -219,7 +240,7 @@ graph TD
     end
 
     subgraph RM["Recovery Mechanism"]
-        RMPolicy["Recovery Policy Engine<br/>Select strategy by error profile"]
+        RMPolicy["Recovery Policy Engine<br/>Select strategy by error profile<br/>+ semantic context"]
         RMRetry["Retry Controller<br/>Backoff, max attempts"]
         RMFallback["Fallback Orchestrator<br/>Safe mode, feature disable"]
         RMRollback["Rollback Coordinator<br/>Revert partial changes"]
@@ -234,25 +255,35 @@ graph TD
     XL --> EHIngest
     CppTry --> EHIngest
     PyTry --> EHIngest
+    SemIter --> EHIngest
     EHState --> RMPolicy
     EHNotify --> RMPolicy
 ```
 
 **Error Flow Components Explanation**
 
-The diagram maps four major functional areas that work together to handle errors as they move up from failure point to recovery decision:
+The diagram maps five major functional areas that work together to handle errors as they move up from failure point to recovery decision:
 
 1. **Python Exception Domain** (top-left): Represents the Python side of error capture. Python code raises exceptions, which are caught via `try/except`, and then reported to C++ using the Python C API's error indicator mechanism (`PyErr_SetString`/`PyErr_Format`). This domain is purely Python runtime semantics.
 
-2. **Exception Translation Layer** (center): The critical translation bridge. It maintains bidirectional mappings: Python exceptions → C++ exception contexts and C++ exceptions → Python error indicators. The layer performs semantic normalization so a C++ `std::out_of_range` maps sensibly to a Python `IndexError`, and vice versa. This layer is language-agnostic in structure but domain-aware in semantics.
+2. **Semantic Validation Layer** (top-center, highlighted 🔍): The **new critical validation gateway** that performs runtime checks before operations reach C++:
+   - **Type Safety Validator**: Checks type conversions, overflow detection, type coercion rules
+   - **Index Normalizer**: Converts negative indices, validates bounds, handles slices
+   - **Lifetime Validator**: Detects dangling references, validates parent container state
+   - **Encoding Validator**: Ensures UTF-8 compliance for string operations
+   - **Iterator Safety**: Tracks modification counters, prevents concurrent modification
+   
+   Semantic violations are caught here and forwarded to the Translation Layer with enriched context about which rule was violated.
 
-3. **C++ Exception Domain** (top-right): Represents the C++ side. Raw C++ exceptions are caught in `try/catch` blocks, with exception details (type, message, context) preserved. This domain uses standard C++ exception semantics and must prevent exceptions from crossing into Python automatically—they must be explicitly translated.
+3. **Exception Translation Layer** (center): The critical translation bridge enhanced with semantic context. It maintains bidirectional mappings: Python exceptions → C++ exception contexts and C++ exceptions → Python error indicators. The layer performs semantic normalization so a C++ `std::out_of_range` maps sensibly to a Python `IndexError`, and vice versa. **NEW:** Now receives semantic rule violation context and maps violations to precise Python exception types and C++ error categories.
 
-4. **Centralized Error Handler** (bottom-left): All errors from both domains feed here. The Error Ingestion step normalizes incoming errors to a common internal representation. The Severity & Source Classifier determines whether an error is informational, a warning, a recoverable error, or a critical system failure. The Structured Logger records all details with timestamp and context. The State Impact Analyzer checks whether the application can continue normally or must enter degraded mode.
+4. **C++ Exception Domain** (top-right): Represents the C++ side. Raw C++ exceptions are caught in `try/catch` blocks, with exception details (type, message, context) preserved. This domain uses standard C++ exception semantics and must prevent exceptions from crossing into Python automatically—they must be explicitly translated.
 
-5. **Recovery Mechanism** (bottom-right): Once classified, the Recovery Policy Engine consults the error profile (severity, source, repetition count) and chooses a strategy: Retry with backoff (for transient failures), Fallback to safe mode (for degraded operation), Rollback to undo partial changes, or Shutdown (for unrecoverable failures).
+5. **Centralized Error Handler** (bottom-left): All errors from both domains feed here, **now including semantic violation metadata**. The Error Ingestion step normalizes incoming errors to a common internal representation with semantic categories (TYPE_CONVERSION, LIFETIME_VIOLATION, INDEX_ERROR, etc.). The Severity & Source Classifier determines whether an error is informational, a warning, a recoverable error, or a critical system failure. The Structured Logger records all details with timestamp, context, and **semantic rule metadata**. The State Impact Analyzer checks whether the application can continue normally or must enter degraded mode, using semantic violation patterns to inform decisions.
 
-**Flow Pattern**: Errors enter from Python or C++ → translated at boundary → ingested and classified → impact assessed → recovery strategy selected → action taken. This creates a deterministic, observable path from failure to recovery.
+6. **Recovery Mechanism** (bottom-right): Once classified, the Recovery Policy Engine consults the error profile (severity, source, repetition count, **semantic violation type**) and chooses a strategy: Retry with backoff (for transient failures), Fallback to safe mode (for degraded operation), Rollback to undo partial changes, or Shutdown (for unrecoverable failures). Different semantic violations may trigger different recovery strategies (e.g., LIFETIME_VIOLATION might trigger SafeMode, while TYPE_CONVERSION might just log and continue).
+
+**Flow Pattern with Semantic Validation**: Errors enter from Python or C++ → **pass through semantic validation gateway** → translated at boundary with semantic context → ingested and classified with semantic categories → impact assessed using semantic patterns → recovery strategy selected based on semantic violation type → action taken. This creates a deterministic, observable path from failure to recovery with rich semantic context at every stage.
 
 ---
 
@@ -1178,6 +1209,342 @@ void generic_struct_construct(void *ptr) {
 - ✅ Clear separation of concerns - proxy catches & converts, reflection throws naturally
 - ✅ Meaningful error messages aid debugging
 - ✅ Prevents undefined behavior (null dereferences, out of bounds access)
+
+---
+
+## Semantic Rules Integration for Error Detection
+
+**Integration Point:** Layer 2 (Python C API Boundary / Proxy Layer)  
+**Cross-Reference:** See `SEMANTIC_RULES_CPYTHON_BINDING.md` - Complete 30-rule reference
+
+### Overview
+
+The error handling architecture integrates with **30 semantic rules** that define correct Python behavior when binding C++ objects. Each semantic rule violation represents a potential error that should be:
+1. **Detected** at runtime through validation checks in the proxy layer
+2. **Prevented** through proper implementation patterns at the boundary
+3. **Logged** via ErrorHandler with semantic category metadata for diagnostics
+4. **Converted** to appropriate Python exception types via the Translation Layer
+
+### Where Semantic Rules Fit in the Architecture
+
+The semantic rules are **not a separate architecture** and **not a second project plan**. They are validation and classification logic applied inside the existing layers:
+
+1. **Python Script Layer (Layer 1):** Optional pre-validation for script-originated values and usage patterns.
+2. **Python C API Boundary / Proxy Layer (Layer 2):** **PRIMARY enforcement point** for semantic rules before and during C++ calls. This is where validation happens.
+3. **Exception Translation Layer (inside Layer 2):** Semantic-rule violations are mapped to precise Python exception types and translated C++ error categories.
+4. **C++ Error Handler + Recovery (Layer 3):** Semantic context is logged, classified, and used by recovery/state policies.
+
+**Design Intent:**
+- Reflection layer remains pure C++ and throws natural C++ exceptions (no semantic validation there)
+- **Proxy/boundary layer enforces Python semantics** (type/index/lifetime/encoding rules) - this is the validation gateway
+- Translation layer receives semantic violation context and performs better exception mapping
+- Error handler consumes semantic categories for observability and policy decisions
+
+**As shown in the updated High-Level Architecture diagram**, the semantic validation layer sits at the Python C API Boundary, performing checks before operations reach the reflection layer:
+
+```
+Python Script → Proxy Entry Point → [🔍 SEMANTIC VALIDATION] → Reflection Layer → C++ Operation
+                                     ↓ (on violation)
+                              Exception Translation + ErrorHandler
+```
+
+### Semantic Rule Categories as Error Sources
+
+The semantic rules are organized into categories that map to specific validation checkpoints in the proxy layer:
+
+#### Category 1: Type Safety (Rules 9, 11, Sc1-Sc7)
+**Validation Point:** Proxy function entry, before any C++ type conversion  
+**Error Detection:** Type mismatches, integer overflow, type coercion failures
+
+```cpp
+// Implementation in python_proxy.cpp (e.g., StructProxy_setattro)
+try {
+    if (!PyLong_Check(value)) {
+        throw std::invalid_argument("Expected int, got " + type_name);
+    }
+    long val = PyLong_AsLong(value);
+    if (val > INT_MAX || val < INT_MIN) {
+        throw std::overflow_error("Value exceeds C++ int range");
+    }
+    // Safe to proceed to C++ layer
+}
+catch (const std::overflow_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::ERROR,
+        ErrorCategory::TYPE_CONVERSION,  // Semantic category
+        e.what(),
+        ErrorContext("type_validation", "int_overflow")
+    );
+    PyErr_Format(PyExc_OverflowError, "%s", e.what());
+    return -1;  // Python C API error indicator
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::TYPE_CONVERSION` - Type coercion failures
+- `ErrorCategory::VALUE_ERROR` - Value out of valid range
+
+#### Category 2: Memory Safety (Rules 3, 13)
+**Validation Point:** Proxy object dereference, parent container access  
+**Error Detection:** Null pointer access, dangling references, lifetime violations
+
+```cpp
+// Implementation in python_proxy.cpp (e.g., VectorProxy_getitem)
+// Validate parent still exists before accessing nested element
+if (parent_proxy && parent_index >= parent_size()) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::LIFETIME_VIOLATION,  // Semantic category
+        "Parent container modified, reference invalid",
+        ErrorContext("nested_access", "lifetime_check")
+    );
+    PyErr_SetString(PyExc_ValueError, "Dangling reference");
+    return nullptr;
+}
+
+if (!cpp_object) {
+    ErrorHandler::instance().log_warning(
+        "Unexpected null object",
+        ErrorContext("object_access", "null_check")
+    );
+    Py_RETURN_NONE;  // Python semantic: None for null
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::NULL_REFERENCE` - Null pointer access
+- `ErrorCategory::LIFETIME_VIOLATION` - Dangling reference access
+
+#### Category 3: Container Semantics (Rules 4, 5, 6)
+**Validation Point:** Index access, slice operations, iteration setup  
+**Error Detection:** Index bounds, iterator invalidation, modification during iteration
+
+```cpp
+// Implementation in python_proxy.cpp (e.g., VectorProxy_getitem)
+try {
+    Py_ssize_t index = PyLong_AsSsize_t(key);
+    
+    // Python semantic: Support negative indexing (Rule 4)
+    if (index < 0) {
+        index = size + index;
+    }
+    if (index < 0 || index >= size) {
+        throw std::out_of_range("Index out of range");
+    }
+    
+    // Check modification counter for iterator safety (Rule 6)
+    if (iter && iter->mod_count != vector->mod_count) {
+        throw std::runtime_error("Container modified during iteration");
+    }
+    
+    // Safe to proceed
+}
+catch (const std::out_of_range& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::INDEX_ERROR,  // Semantic category
+        e.what(),
+        ErrorContext("vector_access", "bounds_check")
+    );
+    PyErr_Format(PyExc_IndexError, "%s", e.what());
+    return nullptr;
+}
+catch (const std::runtime_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::WARNING,
+        ErrorCategory::ITERATOR_INVALIDATION,  // Semantic category
+        e.what(),
+        ErrorContext("iterator", "modification_check")
+    );
+    PyErr_Format(PyExc_RuntimeError, "%s", e.what());
+    return nullptr;
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::INDEX_ERROR` - Index out of bounds
+- `ErrorCategory::ITERATOR_INVALIDATION` - Modification during iteration
+
+#### Category 4: Encoding and String Safety (Rule 10)
+**Validation Point:** String argument processing  
+**Error Detection:** UTF-8 encoding failures, string conversion errors
+
+```cpp
+// Implementation in python_proxy.cpp (e.g., string field setter)
+try {
+    if (!PyUnicode_Check(value)) {
+        throw std::invalid_argument("Expected string");
+    }
+    const char* utf8 = PyUnicode_AsUTF8(value);
+    if (!utf8) {
+        throw std::runtime_error("UTF-8 encoding failed");
+    }
+    // Safe to pass to C++ std::string
+}
+catch (const std::runtime_error& e) {
+    ErrorHandler::instance().log_error(
+        ErrorSeverity::ERROR,
+        ErrorCategory::ENCODING_ERROR,  // Semantic category
+        e.what(),
+        ErrorContext("string_conversion", "utf8_validation")
+    );
+    PyErr_Format(PyExc_UnicodeDecodeError, "%s", e.what());
+    return -1;
+}
+```
+
+**Error Categories:**
+- `ErrorCategory::ENCODING_ERROR` - String encoding/decoding failures
+
+### Semantic Validation Pipeline (Runtime Call Path)
+
+This pipeline describes **runtime execution steps** for a single Python-to-C++ call. It is NOT the same as the Week 1-5 implementation roadmap.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Python → C++ Call Flow                       │
+│          (with Semantic Validation at Proxy Boundary)           │
+└─────────────────────────────────────────────────────────────────┘
+
+   Python Script
+   calls proxy.method(args)
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Step 1: Pre-Validation            │  ← Rules 3, 9, 10, 11
+   │  [Layer 2: Proxy Entry Point]      │    Implemented in python_proxy.cpp
+   │  - Type checks (Rule 11)           │    PyLong_Check, PyUnicode_Check
+   │  - Null checks (Rule 3)            │    cpp_object null validation
+   │  - Overflow checks (Rule 9)        │    INT_MAX/INT_MIN bounds
+   │  - UTF-8 validation (Rule 10)      │    PyUnicode_AsUTF8 safety
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Step 2: Index Normalization       │  ← Rules 4, 5
+   │  [Layer 2: Proxy Index Handler]    │    Implemented in VectorProxy_getitem/setitem
+   │  - Negative index conversion       │    if (index < 0) index = size + index
+   │  - Bounds checking                 │    index < size validation
+   │  - Slice handling                  │    PySlice_GetIndices processing
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Step 3: Lifetime Validation       │  ← Rule 13
+   │  [Layer 2: Proxy Dereference]      │    Implemented in nested object access
+   │  - Parent proxy check              │    parent_proxy != nullptr
+   │  - Modification counter check      │    mod_count comparison
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Step 4: C++ Operation             │  ← Issue 50
+   │  [Layer 2: Try-Catch Boundary]     │    Implemented in ExceptionTranslator
+   │  - Try-catch boundary protection   │    Wraps all reflection calls
+   │  - Reflection layer call           │    generic_vec_append, etc.
+   │  - Modification tracking (Rule 6)  │    Increment mod_count after mutation
+   └────────────────────────────────────┘
+        │
+        ↓
+   ┌────────────────────────────────────┐
+   │  Step 5: Exception Translation     │  ← All Rules
+   │  [Layer 2: Translation Layer]      │    Implemented in python_boundary.hpp
+   │  - C++ exception → Python error    │    catch → PyErr_Format mapping
+   │  - ErrorHandler logging            │    RecordError with semantic category
+   │  - Context capture                 │    ErrorContext with rule metadata
+   └────────────────────────────────────┘
+        │
+        ↓
+   Return to Python
+   (with result or PyErr set + semantic error logged)
+```
+
+**Key Implementation Files for Each Step:**
+- Steps 1-3: `python_proxy.cpp` (all proxy functions: VectorProxy_*, StructProxy_*)
+- Step 4: `python_boundary.hpp` (ExceptionTranslator), `reflection_builder.hpp` (pure C++ operations)
+- Step 5: `python_boundary.hpp` (translation), `error_handler.hpp` (logging with semantic categories)
+
+### Extended Error Categories for Semantic Rules
+
+**File to Modify:** `error_handler.hpp`
+
+Add these semantic-specific categories alongside existing error categories:
+
+```cpp
+enum class ErrorCategory {
+    // Existing base categories
+    MEMORY_ERROR,
+    TYPE_ERROR,
+    VALUE_ERROR,
+    RUNTIME_ERROR,
+    
+    // Semantic-specific categories (NEW - Phase 1)
+    SEMANTIC_VIOLATION,      // General Python semantic rule violation
+    ITERATOR_INVALIDATION,   // Rule 6: Modification during iteration
+    TYPE_CONVERSION,         // Rules 9, 11: Type coercion/overflow
+    ENCODING_ERROR,          // Rule 10: String encoding issues
+    LIFETIME_VIOLATION,      // Rule 13: Dangling reference access
+    INDEX_ERROR,             // Rule 4: Index out of bounds
+    NULL_REFERENCE,          // Rule 3: Unexpected null pointer
+    BOUNDS_ERROR,            // Rule 4, 5: Out of range access
+};
+```
+
+### Implementation Files: Semantic Rule Support
+
+The following files implement or support semantic rule validation:
+
+**New Files (Phase 1):**
+- `semantic_validators.hpp` - Reusable validation functions for type safety, index normalization, lifetime checks
+- `semantic_validators.cpp` - Implementation of validation logic
+- `semantic_context.hpp` - Error context structure carrying rule violation metadata
+
+**Modified Files (Phase 2):**
+- `python_proxy.cpp` - All proxy functions updated with semantic validation calls
+- `python_boundary.hpp` - ExceptionTranslator enhanced with semantic category mapping
+- `error_handler.hpp` - Extended ErrorCategory enum with semantic categories
+- `error_handler.cpp` - Enhanced logging to capture semantic rule metadata
+
+**Test Files:**
+- `tests/semantic_validation_tests.cpp` - Unit tests for each semantic rule category
+- `tests/test_semantic_violations.py` - Python-side tests verifying exception types and messages
+
+### Unified Implementation Summary (Architecture + Semantic Rules)
+
+Use one roadmap only (Phase 1-5 from the architecture plan), with semantic-rule work embedded into the same phases.
+
+| Architecture Phase | Layer Focus | Semantic Rules Integration | Primary Outputs |
+|--------------------|------------|----------------------------|-----------------|
+| **Phase 1: Foundation** | Layer 1 + Layer 3 | Define semantic categories (`error_handler.hpp`), create semantic validation infrastructure (`semantic_validators.hpp/cpp`), implement baseline validators (Rules 3, 9, 10, 11) | `error_handler.*` (with semantic categories), `semantic_validators.*`, `semantic_context.hpp`, `python_boundary.*`, `scripts/error_handling.py`, base tests |
+| **Phase 2: Boundary Protection** | Layer 2 (Proxy/Boundary) | Enforce runtime semantic checks in ALL proxy entry points (`python_proxy.cpp`): type validation, index normalization, lifetime checks (Rules 4, 5, 6, 9, 10, 11, 13); attach semantic context before translation | `python_proxy.cpp/hpp` (all functions), `cpp_module.*`, `semantic_validation_tests.cpp`, boundary tests |
+| **Phase 3: State Management** | Layer 3 (State/Recovery) | Use semantic categories (e.g., `LIFETIME_VIOLATION`, `ITERATOR_INVALIDATION`) to drive recovery decisions and degraded-mode transitions; track semantic violation trends | `state_manager.*`, `recovery_manager.*` (semantic-aware policies), state/recovery tests |
+| **Phase 4: Advanced Features** | Layer 3 + observability | Add semantic-rule metrics dashboard, trend monitoring for violation patterns, circuit-breaker policies keyed by semantic failure types (e.g., open circuit after N TYPE_CONVERSION errors) | `circuit_breaker.*` (semantic-aware), `semantic_metrics.*`, monitoring docs and tests |
+| **Phase 5: Optimization & Hardening** | Cross-layer | Fuzz/property tests against all 30 semantic rules, optimize validation hot paths (inline checks), verify exception mapping coverage for all rule violations | performance reports, security audit (semantic bypass tests), hardening test suites |
+
+### Example: Complete Semantic Validation Implementation
+
+See `SEMANTIC_RULES_CPYTHON_BINDING.md` section "Integration Example: Complete Function with Semantic Checks" for a fully-implemented example showing:
+- All validation steps in the runtime pipeline
+- ErrorHandler integration with semantic categories
+- Exception translation with semantic context
+- Modification counter tracking
+- Test cases for each rule
+
+### Benefits of Semantic Rules Integration
+
+1. **Comprehensive Error Detection** - Catches 30+ types of violations before they cause crashes or undefined behavior
+2. **Python-Correct Behavior** - Proxy objects behave exactly like native Python objects (negative indexing, proper exceptions, etc.)
+3. **Better Error Messages** - Context-rich messages with rule metadata help users debug (e.g., "IndexError: negative index -5 out of bounds for list of size 3")
+4. **Centralized Logging with Semantic Categories** - All semantic violations logged with structured metadata for trend analysis
+5. **Maintainability** - Clear rules documented in SEMANTIC_RULES_CPYTHON_BINDING.md, consistent validation patterns across all proxy functions
+6. **Recovery Intelligence** - State manager and recovery policies use semantic categories to make smarter decisions (e.g., type errors might retry, lifetime violations trigger safe mode)
+
+### Cross-Reference Documentation
+
+For detailed semantic rules and implementation patterns:
+- **Complete Rule Reference:** `SEMANTIC_RULES_CPYTHON_BINDING.md` - All 30 semantic rules with examples
+- **Integration Patterns:** `SEMANTIC_RULES_CPYTHON_BINDING.md` § Integration with Error Handling Architecture
+- **Issue Tracking:** `doc/fixes/ADDITIONAL_ISSUES_MARCH_2026.md` - Issues 50-57 (boundary protection + semantic validation)
 
 ---
 
@@ -2196,6 +2563,10 @@ NEW FILES:
 ├── python_boundary.hpp           [Phase 1 - Foundation]
 ├── error_config.hpp              [Phase 1 - Foundation]
 │
+├── semantic_validators.hpp       [Phase 1 - Foundation - SEMANTIC RULES]
+├── semantic_validators.cpp       [Phase 1 - Foundation - SEMANTIC RULES]
+├── semantic_context.hpp          [Phase 1 - Foundation - SEMANTIC RULES]
+│
 ├── state_manager.hpp             [Phase 3 - State Management]
 ├── state_manager.cpp             [Phase 3 - State Management]
 ├── recovery_manager.hpp          [Phase 3 - State Management]
@@ -2203,6 +2574,8 @@ NEW FILES:
 │
 ├── circuit_breaker.hpp           [Phase 4 - Advanced Features]
 ├── circuit_breaker.cpp           [Phase 4 - Advanced Features]
+├── semantic_metrics.hpp          [Phase 4 - Advanced Features - SEMANTIC RULES]
+├── semantic_metrics.cpp          [Phase 4 - Advanced Features - SEMANTIC RULES]
 │
 ├── scripts/
 │   ├── error_handling.py         [Phase 1 - Foundation]
@@ -2214,14 +2587,17 @@ NEW FILES:
 ├── tests/
 │   ├── error_handling_tests.cpp           [Phase 1 - Foundation]
 │   ├── boundary_protection_tests.cpp      [Phase 2 - Boundary Protection]
+│   ├── semantic_validation_tests.cpp      [Phase 2 - Boundary Protection - SEMANTIC RULES]
 │   ├── state_management_tests.cpp         [Phase 3 - State Management]
 │   ├── recovery_tests.cpp                 [Phase 3 - State Management]
 │   ├── circuit_breaker_tests.cpp          [Phase 4 - Advanced Features]
 │   ├── test_error_handling.py             [Phase 1 - Foundation]
-│   └── test_multi_script_errors.py        [Phase 1 - Foundation]
+│   ├── test_multi_script_errors.py        [Phase 1 - Foundation]
+│   └── test_semantic_violations.py        [Phase 2 - Boundary Protection - SEMANTIC RULES]
 │
 ├── doc/
 │   └── architecture/
+│       ├── ERROR_HANDLING_ARCHITECTURE.md [Updated with Semantic Rules Integration]
 │       ├── IMPLEMENTATION_GUIDE.md        [Phase 4 - Advanced Features]
 │       ├── DESIGN_PATTERNS.md             [Phase 4 - Advanced Features]
 │       └── BEST_PRACTICES.md              [Phase 4 - Advanced Features]
@@ -2237,30 +2613,34 @@ NEW FILES:
 - `generic_vec_size()` - Add `noexcept`
 - `generic_vec_destroy()` - Add `noexcept`
 - Keep pure C++ - no Python.h or language-specific code
+- **NOTE:** No semantic validation here - remains pure C++
 
 **reflection_vector.hpp** [Phase 2 - Boundary Protection] ✅ **COMPLETED**
 - `append_from_cpp()` - Change from `bool` return to `void`, throw exceptions
 - Added `#include <stdexcept>` for exception handling
 - Removed ternary operator, replaced with explicit null check and exception
 
-**python_proxy.cpp** [Phase 2 - Boundary Protection]
-- `VectorProxy_append()` - Wrap with ExceptionTranslator + error logging
-- `VectorProxy_extend()`
-- `VectorProxy_insert()`
-- `VectorProxy_remove()`
-- `VectorProxy_clear()`
-- `VectorProxy_getitem()`
-- `VectorProxy_setitem()`
-- `VectorProxy_delitem()`
-- `VectorProxy_length()`
-- `StructProxy_getattro()`
-- `StructProxy_setattro()`
-- `StructProxy_delattro()`
-- `StructProxy_call()`
+**python_proxy.cpp** [Phase 2 - Boundary Protection + SEMANTIC RULES]
+- `VectorProxy_append()` - Wrap with ExceptionTranslator + error logging + **Type validation (Rules 9,11)**
+- `VectorProxy_extend()` - + **Type validation + iteration safety**
+- `VectorProxy_insert()` - + **Index normalization (Rules 4,5) + type validation**
+- `VectorProxy_remove()` - + **Index normalization + bounds checks**
+- `VectorProxy_clear()` - + **Iterator invalidation tracking (Rule 6)**
+- `VectorProxy_getitem()` - + **Index normalization + lifetime validation (Rule 13)**
+- `VectorProxy_setitem()` - + **Index normalization + type validation + lifetime**
+- `VectorProxy_delitem()` - + **Index normalization + lifetime validation**
+- `VectorProxy_length()` - + **Null checks (Rule 3)**
+- `StructProxy_getattro()` - + **Null checks + lifetime validation**
+- `StructProxy_setattro()` - + **Type validation + overflow checks (Rule 9) + encoding (Rule 10)**
+- `StructProxy_delattro()` - + **Lifetime validation**
+- `StructProxy_call()` - + **Full semantic validation pipeline**
+- **NEW:** All functions call `semantic_validators::validate_*()` before C++ operations
 
 **python_proxy.hpp** [Phase 2 - Boundary Protection]
 - Add `#include "python_boundary.hpp"`
 - Add `#include "error_handler.hpp"`
+- **NEW:** Add `#include "semantic_validators.hpp"` [Phase 2]
+- **NEW:** Add `#include "semantic_context.hpp"` [Phase 2]
 
 **cpp_module.cpp** [Phase 2 - Boundary Protection]
 - Module initialization function - Add error handler setup
@@ -2269,6 +2649,19 @@ NEW FILES:
 
 **cpp_module.hpp** [Phase 2 - Boundary Protection]
 - Add error handling header includes
+
+**error_handler.hpp** [Phase 1 - Foundation + SEMANTIC RULES]
+- **NEW:** Extend `ErrorCategory` enum with semantic categories:
+  - `SEMANTIC_VIOLATION`, `ITERATOR_INVALIDATION`, `TYPE_CONVERSION`
+  - `ENCODING_ERROR`, `LIFETIME_VIOLATION`, `INDEX_ERROR`
+  - `NULL_REFERENCE`, `BOUNDS_ERROR`
+- **NEW:** Add `semantic_rule_id` field to `ErrorRecord` struct [Phase 1]
+- **NEW:** Add `GetSemanticViolationStats()` method [Phase 4]
+
+**error_handler.cpp** [Phase 1 - Foundation + SEMANTIC RULES]
+- **NEW:** Update `RecordError()` to capture semantic rule metadata [Phase 1]
+- **NEW:** Update `LogToFile()` to include semantic rule context [Phase 1]
+- **NEW:** Implement `GetSemanticViolationStats()` for metrics [Phase 4]
 
 **controller.py** [Phase 1 - Foundation]
 - Add error_handling imports
@@ -2280,283 +2673,22 @@ NEW FILES:
 - Phase 1: Initialize ErrorHandler singleton
 - Phase 3: Initialize StateManager singleton, add state transitions in main loop
 - Phase 4: Initialize CircuitBreaker for Python calls, wrap Python invocations with circuit breaker protection
+- **NEW Phase 4:** Query semantic violation statistics for monitoring dashboard
 
 **CMakeLists.txt** [Ongoing - All Phases]
-- Phase 1: Add error_handler.cpp
+- Phase 1: Add error_handler.cpp, **semantic_validators.cpp**, **semantic_context (header-only)**
 - Phase 2: Add python_boundary object files  
 - Phase 3: Add state_manager.cpp, recovery_manager.cpp
-- Phase 4: Add circuit_breaker.cpp
-- Add header directories for error handling
+- Phase 4: Add circuit_breaker.cpp, **semantic_metrics.cpp**
+- Add header directories for error handling and **semantic validation**
 - Link against new object files
 
 **ERROR_HANDLING_ARCHITECTURE.md** [Ongoing - Documentation]
 - Update document version: 1.0 → 2.0
 - Update timestamps as implementation progresses
 - Track completion status
-
----
-
-## Semantic Rules Integration for Error Detection
-
-**Date Added:** March 7, 2026  
-**Cross-Reference:** See `SEMANTIC_RULES_CPYTHON_BINDING.md` - Integration with Error Handling Architecture section
-
-### Overview
-
-The error handling architecture integrates with **30 semantic rules** that define correct Python behavior when binding C++ objects. Each semantic rule violation represents a potential error that should be:
-1. **Detected** at runtime through validation checks
-2. **Prevented** through proper implementation patterns
-3. **Logged** via ErrorHandler for diagnostics
-4. **Converted** to appropriate Python exception types
-
-### Semantic Rule Categories as Error Sources
-
-The semantic rules are organized into categories that map to error detection points:
-
-#### Category 1: Type Safety (Rules 9, 11, Sc1-Sc7)
-**Error Detection:** Type mismatches, integer overflow, type coercion failures
-
-```cpp
-// Programming Rule: Always validate type and range before conversion
-try {
-    if (!PyLong_Check(value)) {
-        throw std::invalid_argument("Expected int, got " + type_name);
-    }
-    long val = PyLong_AsLong(value);
-    if (val > INT_MAX || val < INT_MIN) {
-        throw std::overflow_error("Value exceeds C++ int range");
-    }
-}
-catch (const std::overflow_error& e) {
-    ErrorHandler::instance().log_error(
-        ErrorSeverity::ERROR,
-        ErrorCategory::TYPE_CONVERSION,
-        e.what(),
-        ErrorContext("type_validation", "int_overflow")
-    );
-    PyErr_Format(PyExc_OverflowError, "%s", e.what());
-}
-```
-
-**Error Categories:**
-- `ErrorCategory::TYPE_CONVERSION` - Type coercion failures
-- `ErrorCategory::VALUE_ERROR` - Value out of valid range
-
-#### Category 2: Memory Safety (Rules 3, 13)
-**Error Detection:** Null pointer access, dangling references, lifetime violations
-
-```cpp
-// Programming Rule: Return Py_None for null, validate parent lifetime
-if (!cpp_object) {
-    ErrorHandler::instance().log_warning(
-        "Unexpected null object",
-        ErrorContext("object_access", "null_check")
-    );
-    Py_RETURN_NONE;  // Python semantic: None for null
-}
-
-// Validate parent still exists
-if (parent_proxy && parent_index >= parent_size()) {
-    ErrorHandler::instance().log_error(
-        ErrorSeverity::WARNING,
-        ErrorCategory::LIFETIME_VIOLATION,
-        "Parent container modified, reference invalid",
-        ErrorContext("nested_access", "lifetime_check")
-    );
-    PyErr_SetString(PyExc_ValueError, "Dangling reference");
-    return nullptr;
-}
-```
-
-**Error Categories:**
-- `ErrorCategory::NULL_REFERENCE` - Null pointer access
-- `ErrorCategory::LIFETIME_VIOLATION` - Dangling reference access
-
-#### Category 3: Container Semantics (Rules 4, 5, 6)
-**Error Detection:** Index bounds, iterator invalidation, modification during iteration
-
-```cpp
-// Programming Rule: Normalize negative indices, track modifications
-try {
-    // Python semantic: Support negative indexing
-    if (index < 0) {
-        index = size + index;
-    }
-    if (index < 0 || index >= size) {
-        throw std::out_of_range("Index out of range");
-    }
-    
-    // Check modification counter for iterator safety
-    if (iter->mod_count != vector->mod_count) {
-        throw std::runtime_error("Container modified during iteration");
-    }
-}
-catch (const std::out_of_range& e) {
-    ErrorHandler::instance().log_error(
-        ErrorSeverity::WARNING,
-        ErrorCategory::INDEX_ERROR,
-        e.what(),
-        ErrorContext("vector_access", "bounds_check")
-    );
-    PyErr_Format(PyExc_IndexError, "%s", e.what());
-}
-catch (const std::runtime_error& e) {
-    ErrorHandler::instance().log_error(
-        ErrorSeverity::WARNING,
-        ErrorCategory::ITERATOR_INVALIDATION,
-        e.what(),
-        ErrorContext("iterator", "modification_check")
-    );
-    PyErr_Format(PyExc_RuntimeError, "%s", e.what());
-}
-```
-
-**Error Categories:**
-- `ErrorCategory::INDEX_ERROR` - Index out of bounds
-- `ErrorCategory::ITERATOR_INVALIDATION` - Modification during iteration
-
-#### Category 4: Encoding and String Safety (Rule 10)
-**Error Detection:** UTF-8 encoding failures, string conversion errors
-
-```cpp
-// Programming Rule: Validate UTF-8 encoding
-try {
-    if (!PyUnicode_Check(value)) {
-        throw std::invalid_argument("Expected string");
-    }
-    PyObject* utf8 = PyUnicode_AsUTF8String(value);
-    if (!utf8) {
-        throw std::runtime_error("UTF-8 encoding failed");
-    }
-    // Use string...
-}
-catch (const std::runtime_error& e) {
-    ErrorHandler::instance().log_error(
-        ErrorSeverity::ERROR,
-        ErrorCategory::ENCODING_ERROR,
-        e.what(),
-        ErrorContext("string_conversion", "utf8_validation")
-    );
-    PyErr_Format(PyExc_UnicodeDecodeError, "%s", e.what());
-}
-```
-
-**Error Categories:**
-- `ErrorCategory::ENCODING_ERROR` - String encoding/decoding failures
-
-### Semantic Validation Phases
-
-The error handling architecture applies semantic validations at specific phases:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Python → C++ Call Flow                       │
-└─────────────────────────────────────────────────────────────────┘
-
-   Python Script
-   calls proxy.method(args)
-        │
-        ↓
-   ┌────────────────────────────────────┐
-   │  Phase 1: Pre-Validation           │  ← Rules 3, 9, 10, 11
-   │  - Type checks (Rule 11)           │    Type safety
-   │  - Null checks (Rule 3)            │
-   │  - Overflow checks (Rule 9)        │
-   │  - UTF-8 validation (Rule 10)      │
-   └────────────────────────────────────┘
-        │
-        ↓
-   ┌────────────────────────────────────┐
-   │  Phase 2: Index Normalization      │  ← Rules 4, 5
-   │  - Negative index conversion       │    Container access
-   │  - Bounds checking                 │
-   │  - Slice handling                  │
-   └────────────────────────────────────┘
-        │
-        ↓
-   ┌────────────────────────────────────┐
-   │  Phase 3: Lifetime Validation      │  ← Rule 13
-   │  - Parent proxy check              │    Memory safety
-   │  - Modification counter check      │
-   └────────────────────────────────────┘
-        │
-        ↓
-   ┌────────────────────────────────────┐
-   │  Phase 4: C++ Operation            │  ← Issue 50
-   │  - Try-catch boundary protection   │    Exception safety
-   │  - Reflection layer call           │
-   │  - Modification tracking (Rule 6)  │
-   └────────────────────────────────────┘
-        │
-        ↓
-   ┌────────────────────────────────────┐
-   │  Phase 5: Exception Translation    │  ← All Rules
-   │  - C++ exception → Python error    │    Error conversion
-   │  - ErrorHandler logging            │
-   │  - Context capture                 │
-   └────────────────────────────────────┘
-        │
-        ↓
-   Return to Python
-   (with result or PyErr set)
-```
-
-### Extended Error Categories for Semantic Rules
-
-Add these categories to `error_handler.hpp`:
-
-```cpp
-enum class ErrorCategory {
-    // Existing categories
-    MEMORY_ERROR,
-    TYPE_ERROR,
-    VALUE_ERROR,
-    RUNTIME_ERROR,
-    
-    // Semantic-specific categories (NEW)
-    SEMANTIC_VIOLATION,      // General Python semantic rule violation
-    ITERATOR_INVALIDATION,   // Rule 6: Modification during iteration
-    TYPE_CONVERSION,         // Rules 9, 11: Type coercion/overflow
-    ENCODING_ERROR,          // Rule 10: String encoding issues
-    LIFETIME_VIOLATION,      // Rule 13: Dangling reference access
-    INDEX_ERROR,             // Rule 4: Index out of bounds
-    NULL_REFERENCE,          // Rule 3: Unexpected null pointer
-    BOUNDS_ERROR,            // Rule 4, 5: Out of range access
-};
-```
-
-### Implementation Priority by Phase
-
-| Phase | Semantic Rules | Implementation Status | Error Detection |
-|-------|----------------|----------------------|-----------------|
-| **Phase 1** | Rules 3, 9, 10, 11 | ⏳ In Progress | Type validation, null checks, overflow |
-| **Phase 2** | Rules 4, 5, 6 | ✅ Partially (Issue 50) | Index normalization, iterator safety |
-| **Phase 3** | Rule 13 | ⏳ Planned | Lifetime validation, parent checks |
-| **Phase 4** | Rules 2, 8, 12, 15 | ⏳ Future | Advanced semantics |
-
-### Example: Complete Semantic Validation
-
-See `SEMANTIC_RULES_CPYTHON_BINDING.md` section "Integration Example: Complete Function with Semantic Checks" for a fully-implemented example showing:
-- All 4 validation phases
-- ErrorHandler integration
-- Exception translation
-- Context tracking
-- Modification counting
-
-### Benefits of Semantic Rules Integration
-
-1. **Comprehensive Error Detection** - Catches violations before they cause crashes
-2. **Python-Correct Behavior** - Proxy objects behave like native Python objects
-3. **Better Error Messages** - Context-rich messages help users debug
-4. **Centralized Logging** - All semantic violations logged for analysis
-5. **Maintainability** - Clear rules for implementing new proxy functions
-
-### Cross-Reference Documentation
-
-For detailed semantic rules and implementation patterns:
-- See: `SEMANTIC_RULES_CPYTHON_BINDING.md` - Complete 30-rule reference
-- See: `SEMANTIC_RULES_CPYTHON_BINDING.md` § Integration with Error Handling Architecture
-- See: `doc/fixes/ADDITIONAL_ISSUES_MARCH_2026.md` - Issue 50-57 tracking
+- **NEW:** Added Semantic Rules Integration section after Component Architecture
+- **NEW:** Updated High-Level Architecture and Error Flow diagrams to show semantic validation layer
 
 ---
 
@@ -2606,6 +2738,16 @@ This architecture provides:
 
 ---
 
-**Document Status:** Updated - Corrected architectural separation (v2.1)  
-**Next Steps:** Begin Phase 1 implementation  
+**Document Status:** Updated - Semantic Rules Integration (v2.5)  
+**Document Version:** 2.5  
+**Date:** March 8, 2026  
+**Changes:**
+- ✅ Updated High-Level Architecture diagram to show Semantic Validation Layer at Python C API Boundary
+- ✅ Updated Error Flow Components diagram to include Semantic Validation Layer with 5 validators
+- ✅ Moved Semantic Rules Integration section to proper location (after Component Architecture, before Bidirectional Error Flow)
+- ✅ Enhanced Implementation Summary with semantic-specific files (semantic_validators.*, semantic_context.hpp, semantic_metrics.*, test files)
+- ✅ Updated all existing file modification lists to include semantic validation work by phase
+- ✅ Clarified that semantic validation happens at Layer 2 (Proxy/Boundary), NOT in reflection layer
+
+**Next Steps:** Begin Phase 1 implementation with semantic category definitions  
 **Review Date:** March 11, 2026
