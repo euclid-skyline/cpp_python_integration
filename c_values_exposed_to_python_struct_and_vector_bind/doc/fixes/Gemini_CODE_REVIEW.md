@@ -6,7 +6,10 @@ This document provides a comprehensive analysis of the existing proxy and reflec
 
 ## Issue 1: Missing Placement-New for Complex Fields inside Structs 
 **Files Affected:** `python_proxy.cpp` (`VectorProxy_append_new`), `reflection_struct.hpp`, `interface_builder.hpp`, `reflection_builder.hpp`
+
 **Severity:** CRITICAL - Undefined Behavior (Crash on Vector Append/Resizing)
+
+**Status:** Fixed
 
 **Description:**
 In `VectorProxy_append_new()`, the memory for a new struct element being appended is zero-initialized via `memset`. While there is logic to manually apply placement-new specifically for `std::string` fields, `std::vector` (and any other nested struct with non-trivial constructors) are overlooked. If a struct contains a `std::vector` (e.g., `Team`), zero-initialization bypasses the vector's underlying allocator/constructor. When the element is subsequently copy-constructed into the main container via `push_back`, copying an uninitialized `std::vector` creates severe memory corruption.
@@ -85,7 +88,10 @@ Avoid manually zeroing and placement-new-ing individual field strings. Instead, 
 
 ## Issue 2: Struct Padding Ignored During Bound Size Computation 
 **Files Affected:** `reflection_struct.hpp` (`compute_struct_size`), `python_proxy.cpp` (`calculate_struct_size`)
+
 **Severity:** HIGH - Buffer Overflow / Memory Corruption
+
+**Status:** Fixed
 
 **Description:**
 The functions used to compute the overall size of structures manually sum up the trailing field offsets to guess the struct size (e.g., in `calculate_struct_size`). This inherently ignores standard C++ structural padding alignment requirements. The allocation logic for `new_instance` utilizes this undersized calculated size, meaning it allocates less memory than actually required when structurally padded (e.g., a `double` mixed with `char` variables).
@@ -103,7 +109,10 @@ Drop the manual computation logic completely and rely exclusively on the compile
 
 ## Issue 3: Memory Leak on Proxy Creation Failure
 **Files Affected:** `cpp_module.cpp`
+
 **Severity:** LOW - Memory Leak on Specific Runtime Python Initializations
+
+**Status:** Fixed
 
 **Description:**
 In `cpp_module_getattr`, when creating wrappers for vectors/structs (`StructProxy_New` or `VectorProxy_New`), if memory allocation fails internally within the Python runtime bindings, a `nullptr` is subsequently returned. However, the manually dynamically allocated underlying wrapper variable is forgotten and leaks. By contrast, the matching implementation counterpart code `cppproxy_getattro` inside `python_proxy.cpp` gracefully checks these runtime binding proxy creations via `if(!result) { delete wrapper; }`.
@@ -137,7 +146,10 @@ Delete dynamic `BoundValue` wrapper templates natively against failing initializ
 
 ## Issue 4: ODR Violation & Static Duplicate Bloat in Macros
 **Files Affected:** `interface_builder.hpp` 
+
 **Severity:** MEDIUM - Scalability and Multiple Translation Unit Risks
+
+**Status:** Fixed
 
 **Description:**
 The `REGISTER_STRUCT` macro uniquely declares the generated struct information variable statically as `static StructInfo struct_type##Info = ...`. When expanded in a header file (like `data_game_traits.hpp`), every inclusive `.cpp` file copies its own independent static struct variation invisibly into memory. This inflates internal executable scopes and causes identically mapped pointer configurations to be flagged as distinct pointers at runtime depending on the compilation translation context.
@@ -156,7 +168,10 @@ Rely on targeted C++17 `inline` variables ensuring exact singleton bindings acro
 
 ## Issue 5: Dangling Pointers on Nested Structs/Vectors Inheriting Context Links
 **Files Affected:** `python_proxy.cpp`, `reflection_struct.hpp`, `reflection_vector.hpp`
+
 **Severity:** MEDIUM - Runtime Memory Danglers
+
+**Status:** Fixed
 
 **Description:**
 The Python API tracking system elegantly tracks proxy movements via dynamic runtime checks utilizing `m_parent_vector` + `m_element_index`. However, deep nested structural mappings such as `cpp.team_vec[0].scores` break this tracking. In `StructProxy_getattro`, reading inner fields accesses a fresh unconnected top-level allocation using the bare detached raw pointer address (`fieldPtr`), permanently abandoning context. If the higher tier overarching root array triggers resizing allocations, the inner scope proxy pointers drift into empty space.
@@ -205,7 +220,10 @@ The Python API tracking system elegantly tracks proxy movements via dynamic runt
 
 ## Issue 6: GIL (Global Interpreter Lock) Management in Main Game Loop
 **Files Affected:** `main.cpp`
+
 **Severity:** HIGH - Deadlock / Blocking Background Python Threads
+
+**Status:** Not Yet Fixed
 
 **Description:**
 The C++ main loop repeatedly calls Python code using `PyObject_CallObject`, but it never releases the Global Interpreter Lock (GIL) when executing C++ specific long-running operations or sleeps (e.g., `std::this_thread::sleep_for`). If there are any background Python threads operating alongside the C++ engine (e.g., for networking or I/O), they will be completely starved and blocked because the C++ main thread is indefinitely holding the GIL.
@@ -226,7 +244,10 @@ Release the GIL using `Py_BEGIN_ALLOW_THREADS` and `Py_END_ALLOW_THREADS` before
 
 ## Issue 7: Static Initialization Order Fiasco Risk for Global Variable Registry
 **Files Affected:** `value_interface.hpp`, `value_interface.cpp`, `cpp_module.cpp`
+
 **Severity:** MEDIUM - Startup Crash Risk
+
+**Status:** Fixed
 
 **Description:**
 `PyInterface::g_values` is declared as an `inline static std::unordered_map` inside `value_interface.hpp`. If a user attempts to bind global C++ variables to Python during the dynamic initialization phase (e.g., calling `PyInterface::bind` inside the constructor of another global static object), it might execute before `g_values` is constructed by the C++ runtime, leading to a fatal application crash using uninitialized memory.
@@ -287,7 +308,10 @@ If the application engine and Python integration strictly run within a single th
 
 ## Issue 8: Swallowed Python Exceptions Leading to SystemError
 **Files Affected:** `python_bind.hpp` (e.g. `PyBoundInt::from_python`), `python_proxy.cpp` (`StructProxy_setattro`, `VectorProxy_setitem`, `VectorProxy_append`)
+
 **Severity:** HIGH - Fatal Interpreter Crash (`SystemError`)
+
+**Status:** Not Yet Fixed
 
 **Description:**
 When converting Python values to C++ (e.g., assigning to a C++ proxy variable), the code checks the Python type (e.g., `PyLong_Check`) and then extracts the value (e.g., `PyLong_AsLong`). However, it completely ignores the possibility that value extraction might fail (e.g., if the Python integer is too large to fit in a C `long`, `PyLong_AsLong` returns `-1` and sets an `OverflowError`). The C++ code proceeds to return `true` or `0` (success), instructing the interpreter that the operation succeeded, but leaving an active exception set in the background context. CPython strictly forbids returning success with an active exception and will instantly crash with a `SystemError: returned a result with an error set`. Furthermore, in `python_bind.hpp`, `PyFloat_AsDouble` also acts identically if an error occurs. 
@@ -309,7 +333,10 @@ Check `PyErr_Occurred()` after `PyLong_AsLong` or `PyFloat_AsDouble` calls. If a
 
 ## Issue 9: Silent Integer Truncation on C++ Narrowing Casts
 **Files Affected:** `python_proxy.cpp` (`StructProxy_setattro`, `VectorProxy_setitem`, `VectorProxy_append`), `python_bind.hpp`
+
 **Severity:** MEDIUM - Data Corruption / Loss of Precision
+
+**Status:** Not Yet Fixed
 
 **Description:**
 Both `python_bind.hpp` and `python_proxy.cpp` fetch integers using `PyLong_AsLong(value)`, which returns a `long` integer (e.g., 64-bit on many platforms). This value is immediately down-casted via `static_cast<int>` and assigned to C++ `int` fields (which are usually 32-bit). If a Python script passes a number that fits inside a `long` but exceeds the maximum size of a 32-bit `int` (e.g., `3000000000`), no Python overflow exception will be generated, but the C++ value will be silently truncated and heavily corrupted (producing negative or heavily warped numbers).
@@ -334,7 +361,10 @@ Implement a bounds check before casting the retrieved `long` variable down to `i
 
 ## Issue 10: Fatal Fallback Crash on Cleared Python Exceptions
 **Files Affected:** `main.cpp`
+
 **Severity:** HIGH - Application Crash on `KeyboardInterrupt` (Ctrl+C)
+
+**Status:** Not Yet Fixed
 
 **Description:**
 The main execution loop uses `PyErr_ExceptionMatches(PyExc_KeyboardInterrupt)` to detect if the user forcefully stops the script (Ctrl+C). If it matches, the exception is immediately cleared from the interpreter thread using `PyErr_Clear()`. However, the execution flow then falls straight through without `break`ing or `continue`ing and executes `PyErr_Print()`. Calling `PyErr_Print()` when no exception is actively set causes undefined behavior within CPython (often printing missing excepthook warnings, lost stderr bindings, or outright crashing).
@@ -363,7 +393,10 @@ Use an `else if` structure or `return`/`continue` isolation so `PyErr_Print()` o
 
 ## Issue 11: Stack Pointer Referencing Vulnerability via `PyInterface::bind` 
 **Files Affected:** `main.cpp`, `value_interface.hpp`
+
 **Severity:** MEDIUM - Dangling References / Potential Segfaults in Future usage
+
+**Status:** Not Yet Fixed
 
 **Description:**
 The function `PyInterface::bind(name, variable)` directly saves the raw memory address pointer (`&variable`) into the global `PyInterface::g_values()` registry without claiming logical ownership or moving the memory. In `main.cpp`, variables like `int temp`, `Player player`, and `std::vector scores` are allocated directly on the stack inside the `main()` scope. While safe implicitly here because `main()` outlives the Python execution, if any engineer uses `PyInterface::bind` inside a smaller subsidiary function scope, those stack memory allocations will be destroyed the second the function returns. The global dictionary registry will then blindly provide detached dangling pointers to Python, enabling Use-After-Free memory exploitation or instant application segfaults.
